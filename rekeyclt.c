@@ -147,6 +147,7 @@ static int sendrcv(SSL *ssl, int opcode, mb_t data) {
      SSL_free(ssl);
      fatal("Connection closed");
   }
+  return ret;
 }
 
 static void do_auth(SSL *ssl, char *hostname) {
