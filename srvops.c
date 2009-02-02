@@ -174,6 +174,69 @@ static void check_authz(struct rekey_session *sess)
 #endif
 }
 
+#define LIMIT_TARGET "test"
+
+static int check_target(struct rekey_session *sess, krb5_principal target) 
+{
+  int ret=1;
+  char *realm;
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
+  const char  *princ_realm;
+#ifdef LIMIT_TARGET
+  const char  *c1;
+#endif
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
+  krb5_data *princ_realm;
+#ifdef LIMIT_TARGET
+  krb5_data *c1;
+#endif
+#endif
+
+  if (krb5_get_default_realm(sess->kctx, &realm))
+    return ret;
+  
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
+
+  princ_realm = krb5_principal_get_realm(sess->kctx, target); 
+  if (!princ_realm || strncmp(princ_realm , realm, strlen(realm))) {
+    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
+    goto out;
+  }
+#ifdef LIMIT_TARGET
+  c1 = krb5_principal_get_comp_string(sess->kctx, target, 0);
+  if (!c1 || strlen(c1) != strlen(LIMIT_TARGET) || strcmp(c1, LIMIT_TARGET)) {
+    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
+    goto out;
+  }
+#endif
+  ret=0;
+  
+ out:
+  krb5_xfree(realm);
+#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
+
+  princ_realm = krb5_princ_realm(sess->kctx, target); 
+  if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm))) {
+    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
+    goto out;
+  }
+#ifdef LIMIT_TARGET
+  if (krb5_princ_size(sess->kctx, target) < 1)
+    goto out;
+  c1 = krb5_princ_component(sess->kctx, target, 0);
+  if (!c1 || c1->length != strlen(LIMIT_TARGET) || strncmp(c1->data, LIMIT_TARGET, c1->length)) {
+       send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
+    goto out;
+  }
+#endif
+  ret=0;
+ out:
+  krb5_free_default_realm(sess->kctx, realm);
+#endif
+  return ret;
+}
+  
+
 static void s_auth(struct rekey_session *sess, mb_t buf) {
   OM_uint32 maj, min, tmin, rflag;
   gss_buffer_desc in, out, outname;
@@ -446,6 +509,178 @@ static void s_authchan(struct rekey_session *sess, mb_t buf)
 #endif
 }
 
+static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal, 
+                                    krb5_principal target, int create, int *kvnop) 
+{
+  int rc;
+  struct sqlite3_stmt *ins;
+  int kvno, match;
+  void *kadm_handle=NULL;
+  kadm5_config_params kadm_param;
+  char *realm=NULL;
+  kadm5_principal_ent_rec ke;
+  sqlite_int64 princid=0;
+  
+  rc = sqlite3_prepare_v2(sess->dbh, 
+                          "SELECT id from principals where name=?",
+                          -1, &ins, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(ins, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(ins))
+    match++;
+  rc = sqlite3_finalize(ins);
+  ins=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  if (match) {
+    send_error(sess, ERR_OTHER, "Rekey for this principal already in progress");
+    goto freeall;
+  }
+
+  rc=krb5_get_default_realm(sess->kctx, &realm);
+  if (rc) {
+    prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  }
+
+  kadm_param.mask = KADM5_CONFIG_REALM;
+  kadm_param.realm = realm;
+  memset(&ke, 0, sizeof(ke));
+#ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
+  rc = kadm5_init_with_skey_ctx(sess->kctx, 
+			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+			    &kadm_param, KADM5_STRUCT_VERSION, 
+			    KADM5_API_VERSION_2, &kadm_handle);
+#else
+  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+			    &kadm_param, KADM5_STRUCT_VERSION, 
+			    KADM5_API_VERSION_2, NULL, &kadm_handle);
+#endif
+  if (rc) {
+    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  }
+
+  rc = kadm5_get_principal(kadm_handle, target, &ke, KADM5_KVNO);
+  if (rc) {
+    if (rc == KADM5_UNK_PRINC) {
+      if (create) {
+      } else {
+        prtmsg("Principal %s does not exist", principal);
+        send_error(sess, ERR_NOTFOUND, "Requested principal does not exist");
+        goto freeall;
+      }
+    } else {
+      prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
+      goto interr;
+    }
+    
+  }
+  kvno = ke.kvno + 1;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "INSERT INTO principals (name, kvno) VALUES (?, ?);",
+			  -1, &ins, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(ins, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_int(ins, 2, kvno);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  sqlite3_step(ins);    
+  rc = sqlite3_finalize(ins);
+  ins=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  princid  = sqlite3_last_insert_rowid(sess->dbh);
+  if (kvnop)
+    *kvnop=kvno;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+ freeall:
+  if (ins)
+    sqlite3_finalize(ins);
+  if (kadm_handle) {
+    kadm5_free_principal_ent(kadm_handle, &ke);
+    kadm5_destroy(kadm_handle);
+  }
+  if (realm) {
+#if defined(HAVE_KRB5_REALM)
+    krb5_xfree(realm);
+#else
+    krb5_free_default_realm(sess->kctx, realm);
+#endif
+  }
+
+  return princid;
+}
+
+  
+
+
+static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int desonly) 
+{
+  krb5_enctype *pEtype;
+  krb5_keyblock keyblock;
+  krb5_error_code kc;
+  sqlite3_stmt *ins=NULL;
+  int rc;
+
+  if (desonly)
+    pEtype=des_enctypes;
+  else
+    pEtype=cur_enctypes;
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
+			  -1, &ins, NULL);
+  for (;*pEtype != ENCTYPE_NULL; pEtype++) {
+    kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
+    if (kc) {
+      prtmsg("Cannot generate key for enctype %d (kerberos error %s)", 
+             *pEtype, krb5_get_err_text(sess->kctx, kc));
+      goto interr;
+    }
+    rc = sqlite3_bind_blob(ins, 3, Z_keydata(&keyblock), 
+                           Z_keylen(&keyblock), SQLITE_TRANSIENT);
+    krb5_free_keyblock_contents(sess->kctx, &keyblock);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int64(ins, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int(ins, 2, *pEtype);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(ins);    
+    rc = sqlite3_reset(ins);
+    if (rc != SQLITE_OK)
+      goto dberr;
+  }
+  rc = sqlite3_finalize(ins);
+  ins=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  return 0;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+ freeall:
+  return 1;
+}
+
 static void s_newreq(struct rekey_session *sess, mb_t buf) 
 {
   char *principal=NULL;
@@ -456,20 +691,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   sqlite3_stmt *ins=NULL;
   int dbaction=0;
   sqlite_int64 princid;
-  krb5_enctype *pEtype;
-  krb5_keyblock keyblock;
-  krb5_error_code kc;
-  int kvno, match;
-  void *kadm_handle=NULL;
-  kadm5_config_params kadm_param;
-  char *realm;
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm;
-#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
-  krb5_data *princ_realm;
-#endif
   krb5_principal target=NULL;
-  kadm5_principal_ent_rec ke;
   
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
@@ -514,106 +736,22 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
       goto badpkt;
     hostnames[i][l]=0;
   }
-  rc=krb5_get_default_realm(sess->kctx, &realm);
-  if (rc) {
-    prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-
-  princ_realm = krb5_principal_get_realm(sess->kctx, sess->princ); 
-  if (!princ_realm || strncmp(princ_realm , realm, strlen(realm))) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
+  if (check_target(sess, target))
     goto freeall;
-  }
-
-#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
-
-  princ_realm = krb5_princ_realm(sess->kctx, sess->princ); 
-  if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm))) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
-    goto freeall;
-  }
-#endif
 
   if (sql_init(sess))
     goto dberrnomsg;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT id from principals where name=?",
-                          -1, &ins, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(ins, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(ins))
-    match++;
-  rc = sqlite3_finalize(ins);
-  ins=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  if (match) {
-    send_error(sess, ERR_OTHER, "Rekey for this principal already in progress");
-    goto freeall;
-  }
-
-  kadm_param.mask = KADM5_CONFIG_REALM;
-  kadm_param.realm = realm;
-  memset(&ke, 0, sizeof(ke));
-#ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
-  rc = kadm5_init_with_skey_ctx(sess->kctx, 
-			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, &kadm_handle);
-#else
-  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, NULL, &kadm_handle);
-#endif
-  if (rc) {
-    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
-
-  rc = kadm5_get_principal(kadm_handle, target, &ke, KADM5_KVNO);
-  if (rc) {
-    if (rc == KADM5_UNK_PRINC) {
-      prtmsg("Principal %s does not exist", principal);
-      send_error(sess, ERR_NOTFOUND, "Requested principal does not exist");
-      goto freeall;
-    }
-    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
-  kvno = ke.kvno + 1;
 
   if (sql_begin_trans(sess))
     goto dberrnomsg;
   dbaction=-1;
   
+  princid = setup_principal(sess, principal, target, 0, NULL);
+  if (princid == 0)
+    goto freeall;
+
   rc = sqlite3_prepare_v2(sess->dbh, 
-			  "INSERT INTO principals (name, kvno) VALUES (?, ?);",
-			  -1, &ins, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(ins, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int(ins, 2, kvno);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  sqlite3_step(ins);    
-  rc = sqlite3_finalize(ins);
-  ins=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  princid  = sqlite3_last_insert_rowid(sess->dbh);
-  
-  
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "INSERT INTO acl (principal, hostname, status) VALUES (?, ?, 0);",
+			  "INSERT INTO acl (principal, hostname) VALUES (?, ?);",
 			  -1, &ins, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
@@ -635,41 +773,8 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (rc != SQLITE_OK)
     goto dberr;
 
-  if (desonly)
-    pEtype=des_enctypes;
-  else
-    pEtype=cur_enctypes;
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
-			  -1, &ins, NULL);
-  for (;*pEtype != ENCTYPE_NULL; pEtype++) {
-    kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
-    if (kc) {
-      prtmsg("Cannot generate key for enctype %d (kerberos error %s)", 
-             *pEtype, krb5_get_err_text(sess->kctx, kc));
-      goto interr;
-    }
-    rc = sqlite3_bind_blob(ins, 3, Z_keydata(&keyblock), 
-                           Z_keylen(&keyblock), SQLITE_TRANSIENT);
-    krb5_free_keyblock_contents(sess->kctx, &keyblock);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_int64(ins, 1, princid);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_int(ins, 2, *pEtype);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(ins);    
-    rc = sqlite3_reset(ins);
-    if (rc != SQLITE_OK)
-      goto dberr;
-  }
-  rc = sqlite3_finalize(ins);
-  ins=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-    
+  if (generate_keys(sess, princid, desonly))
+    goto freeall;
   
   do_send(sess->ssl, RESP_OK, NULL);
   dbaction=1;
@@ -678,9 +783,6 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
-  goto freeall;
- interr:
-  send_error(sess, ERR_OTHER, "Server internal error");
   goto freeall;
  memerr:
   send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
@@ -694,17 +796,6 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     sql_commit_trans(sess);
   else if (dbaction < 0)
     sql_rollback_trans(sess);
-  if (kadm_handle) {
-    kadm5_free_principal_ent(kadm_handle, &ke);
-    kadm5_destroy(kadm_handle);
-  }
-  if (realm) {
-#if defined(HAVE_KRB5_REALM)
-    krb5_xfree(realm);
-#else
-    krb5_free_default_realm(sess->kctx, realm);
-#endif
-  }
 
   if (target)
     krb5_free_principal(sess->kctx, target);
@@ -744,7 +835,7 @@ static void s_status(struct rekey_session *sess, mb_t buf)
     goto dberrnomsg;
 
   rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT hostname,complete,attempted FROM principals,acl WHERE name=? AND principal = id",
+                          "SELECT hostname,completed,attempted FROM principals,acl WHERE name=? AND principal = id",
                           -1, &st, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
@@ -809,16 +900,91 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   free(principal);
 }
 
+static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int kvno, mb_t buf, size_t *startlen) 
+{
+  int rc;
+  sqlite3_stmt *st;
+  int enctype, n;
+  size_t l, curlen, last;
+  const unsigned char *key;
+
+  curlen = *startlen;
+  last = curlen; /* key count goes here */
+  curlen += 4; /* key count */
+  rc = sqlite3_prepare(sess->dbh,"SELECT enctype, key from keys where principal=?",
+		       -1, &st, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  
+    rc = sqlite3_bind_int64(st, 1, principal);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    n=0;
+    while (SQLITE_ROW == sqlite3_step(st)) {
+      enctype = sqlite3_column_int(st, 0);
+      key = sqlite3_column_blob(st, 1);
+      l = sqlite3_column_bytes(st, 1);
+      if (key == NULL || l == 0)
+	goto interr;
+      if (enctype == 0)
+	goto dberr;
+      if (buf_setlength(buf, curlen + 8 + l)) /* enctype, key length */
+	goto memerr;
+      set_cursor(buf, curlen);
+      if (buf_putint(buf, enctype) || buf_putint(buf, l) ||
+	  buf_putdata(buf, key, l))
+	goto interr;
+      curlen = curlen + 8 + l;
+      if (enctype == ENCTYPE_DES_CBC_CRC) {
+        if (buf_setlength(buf, curlen + 16 + l)) /* enctype, key length */
+          goto memerr;
+        set_cursor(buf, curlen);
+        if (buf_putint(buf, ENCTYPE_DES_CBC_MD4) || buf_putint(buf, l) ||
+            buf_putdata(buf, key, l))
+          goto interr;
+        if (buf_putint(buf, ENCTYPE_DES_CBC_MD5) || buf_putint(buf, l) ||
+            buf_putdata(buf, key, l))
+          goto interr;
+        curlen = curlen + 16 + l;
+      }
+      n++;
+    }
+    set_cursor(buf, last);
+    if (buf_putint(buf, n))
+      goto interr;
+    rc = sqlite3_finalize(st);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    if (n == 0)   
+      goto interr;
+    *startlen = curlen;
+    return 0;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+ freeall:
+  if (st)
+    sqlite3_finalize(st);
+  return 1;
+}
+
+    
+
 static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
-  int m, n, rc;
-  size_t l, curlen, last;
-  sqlite3_stmt *st, *st2, *updatt, *updcount;
+  int m, rc;
+  size_t l, curlen;
+  sqlite3_stmt *st, *updatt, *updcount;
   sqlite_int64 principal;
   const char *pname;
-  int kvno, enctype, dbaction=0;
-  const unsigned char *key;
-  
+  int kvno, dbaction=0;
+    
   if (sess->is_host == 0) {
     send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
     return;
@@ -839,10 +1005,6 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
                          strlen(sess->hostname), SQLITE_STATIC);
   if (rc != SQLITE_OK)
     goto dberr;
-  rc = sqlite3_prepare(sess->dbh,"SELECT enctype, key from keys where principal=?",
-		       -1, &st2, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
 
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "UPDATE acl SET attempted = 1 WHERE principal = ? AND hostname = ?;",
@@ -855,7 +1017,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     goto dberr;
 
   rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE principal SET downloadcount = downloadcount +1 WHERE id = ?;",
+			  "UPDATE principals SET downloadcount = downloadcount +1 WHERE id = ?;",
 			  -1, &updcount, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
@@ -878,39 +1040,9 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     if (buf_putint(buf, l) || buf_putdata(buf, pname, l) ||
 	buf_putint(buf, kvno))
       goto interr;
-    curlen=curlen + 8 + l;
-    last = curlen; /* key count goes here */
-    curlen += 4; /* key count */
-    rc = sqlite3_bind_int64(st2, 1, principal);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    n=0;
-    while (SQLITE_ROW == sqlite3_step(st2)) {
-      enctype = sqlite3_column_int(st2, 0);
-      key = sqlite3_column_blob(st2, 1);
-      l = sqlite3_column_bytes(st2, 1);
-      if (key == NULL || l == 0)
-	goto interr;
-      if (enctype == 0)
-	goto dberr;
-      if (buf_setlength(buf, curlen + 8 + l)) /* enctype, key length */
-	goto memerr;
-      set_cursor(buf, curlen);
-      if (buf_putint(buf, enctype) || buf_putint(buf, l) ||
-	  buf_putdata(buf, key, l))
-	goto interr;
-      curlen = curlen + 8 + l;
-      
-      n++;
-    }
-    set_cursor(buf, last);
-    if (buf_putint(buf, n))
-      goto interr;
-    rc = sqlite3_reset(st2);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    if (n == 0)   
-      goto interr;
+    if (add_keys_one(sess, principal, kvno, buf, &curlen))
+      goto freeall;
+
     m++;
 
     rc = sqlite3_bind_int64(updatt, 1, principal);
@@ -953,8 +1085,6 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
  freeall:
   if (st)
     sqlite3_finalize(st);
-  if (st2)
-    sqlite3_finalize(st2);
   if (updatt)
     sqlite3_finalize(updatt);
   if (updcount)
@@ -991,11 +1121,50 @@ static int prepare_kadm_key(krb5_keyblock *k, int kvno, int enctype, int keylen,
 }
 #endif    
 
+static int do_purge(struct rekey_session *sess, sqlite_int64 princid) 
+{
+  int rc;
+  struct sqlite3_stmt *del;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "DELETE FROM keys WHERE principal = ?;",
+			  -1, &del, NULL);
+  if (rc == SQLITE_OK) {
+    rc = sqlite3_bind_int64(del, 1, princid);
+    if (rc == SQLITE_OK)
+      sqlite3_step(del);
+    rc = sqlite3_finalize(del);
+    del=0;
+  }
+  if (rc == SQLITE_OK)
+    rc = sqlite3_prepare_v2(sess->dbh, 
+			    "DELETE FROM acl WHERE principal = ?;",
+			    -1, &del, NULL);
+  if (rc == SQLITE_OK) {
+    rc = sqlite3_bind_int64(del, 1, princid);
+    if (rc == SQLITE_OK)
+      sqlite3_step(del);
+    rc = sqlite3_finalize(del);
+    del=0;
+  }
+  if (rc == SQLITE_OK)
+    rc = sqlite3_prepare_v2(sess->dbh, 
+			    "DELETE FROM principals WHERE id = ?;",
+			    -1, &del, NULL);
+  if (rc == SQLITE_OK) {
+    rc = sqlite3_bind_int64(del, 1, princid);
+    if (rc == SQLITE_OK)
+      sqlite3_step(del);
+    rc = sqlite3_finalize(del);
+    del=0;
+  }
+  return rc;
+}
+
 static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
   sqlite3_stmt *checkcomp=NULL, *updmsg=NULL, *selkey=NULL;
-  sqlite3_stmt *del=NULL;
   sqlite_int64 princid;
   unsigned int l, kvno, nk=0, match, no_send = 0, enctype, keylen, i;
   char *principal = NULL;
@@ -1015,10 +1184,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   const unsigned char *keydata;
     
 
-  if (sess->is_admin) {
-    send_error(sess, ERR_BADOP, "Not implemented yet");
-    return;
-  } else if (sess->is_host == 0) {
+  if (sess->is_host == 0 && sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized");
     return;
   }
@@ -1039,6 +1205,9 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 
   if (buf_getint(buf, &kvno))
     goto badpkt;
+  
+  if (check_target(sess, target))
+    goto freeall;
 
   if (sql_init(sess))
     goto dberrnomsg;
@@ -1073,52 +1242,56 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     goto freeall;
   }
 
-  if (sql_begin_trans(sess))
-    goto dberr;
-  dbaction = -1;
+  if (sess->is_host) {
+    if (sql_begin_trans(sess))
+      goto dberr;
+    dbaction = -1;
+    
+    rc = sqlite3_prepare_v2(sess->dbh, 
+                            "UPDATE acl SET completed = 1 WHERE principal = ? AND hostname = ?;",
+                            -1, &updcomp, NULL);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int64(updcomp, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_text(updcomp, 2, sess->hostname, 
+                           strlen(sess->hostname), SQLITE_STATIC);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updcomp);
+    rc = sqlite3_finalize(updcomp);
+    updcomp=NULL;
+    if (rc != SQLITE_OK)
+      goto dberr;
 
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE acl SET completed = 1 WHERE principal = ? AND hostname = ?;",
-			  -1, &updcomp, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int64(updcomp, 1, princid);
-  rc = sqlite3_bind_text(updcomp, 2, sess->hostname, 
-                         strlen(sess->hostname), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  sqlite3_step(updcomp);
-  rc = sqlite3_finalize(updcomp);
-  updcomp=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE principal SET commitcount = commitcount +1 WHERE id = ?;",
-			  -1, &updcount, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int64(updcount, 1, princid);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  sqlite3_step(updcount);
-  rc = sqlite3_finalize(updcount);
-  updcount=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  dbaction=0;
-  if (sql_commit_trans(sess))
-    goto dberr;
-  /* at this point, the client doesn't care about future errors */
-  do_send(sess->ssl, RESP_OK, NULL);
-  no_send = 1;
-
+    rc = sqlite3_prepare_v2(sess->dbh, 
+                            "UPDATE principals SET commitcount = commitcount +1 WHERE id = ?;",
+                            -1, &updcount, NULL);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int64(updcount, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updcount);
+    rc = sqlite3_finalize(updcount);
+    updcount=NULL;
+    if (rc != SQLITE_OK)
+      goto dberr;
+    dbaction=0;
+    if (sql_commit_trans(sess))
+      goto dberr;
+    /* at this point, the client doesn't care about future errors */
+    do_send(sess->ssl, RESP_OK, NULL);
+    no_send = 1;
+  }
+  
   rc = sqlite3_prepare_v2(sess->dbh,
-			  "SELECT principal FROM acl WHERE principal = ? AND complete = 0;",
+			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
 			  -1, &checkcomp, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
-  rc = sqlite3_bind_int64(checkcomp, 0, princid);
+  rc = sqlite3_bind_int64(checkcomp, 1, princid);
   if (rc != SQLITE_OK)
     goto dberr;
   match=0;
@@ -1131,15 +1304,17 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     goto dberr;
   /* not done yet */
   if (match) {
+    if (no_send == 0)
+      send_error(sess, ERR_OTHER, "Principal is not ready for commit");
     goto freeall;
   }
   
   rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE principal SET message = ? WHERE id = ?;",
+			  "UPDATE principals SET message = ? WHERE id = ?;",
 			  -1, &updmsg, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
-  rc = sqlite3_bind_int64(updcount, 2, princid);
+  rc = sqlite3_bind_int64(updmsg, 2, princid);
   if (rc != SQLITE_OK)
     goto dberr;
   
@@ -1176,6 +1351,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
       if (rc != SQLITE_OK) {
 	sqlite3_step(updmsg); /* finalize in freeall */
       }
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Principal disappeared from kdc");
       goto freeall;
     }
     prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
@@ -1184,12 +1361,14 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 
   if (kvno != ke.kvno + 1) {
     prtmsg("kvno of %s changed from %d to %d; not finalizing commit", principal, kvno - 1, ke.kvno);
-    rc = sqlite3_bind_text(updmsg, 2, "kvno changed on kdc", 
-			   strlen("kvno changed on kdc"), 
+    rc = sqlite3_bind_text(updmsg, 2, "Principal's kvno changed on kdc", 
+			   strlen("Principal's kvno changed on kdc"), 
 			   SQLITE_STATIC);
     if (rc != SQLITE_OK) {
       sqlite3_step(updmsg); /* finalize in freeall */
     }
+    if (no_send == 0)
+      send_error(sess, ERR_OTHER, "Principal's kvno changed on kdc");
     goto freeall;
   }
   
@@ -1198,7 +1377,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 			  -1, &selkey, NULL);
   if (rc != SQLITE_OK)
     goto dberr;
-  rc = sqlite3_bind_int64(selkey, 0, princid);
+  rc = sqlite3_bind_int64(selkey, 1, princid);
   if (rc != SQLITE_OK)
     goto dberr;
   while (SQLITE_ROW == sqlite3_step(selkey)) {
@@ -1249,46 +1428,28 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     if (rc != SQLITE_OK) {
       sqlite3_step(updmsg); /* finalize in freeall */
     }
+    if (no_send == 0)
+      send_error(sess, ERR_OTHER, "Updating kdc failed");
     goto freeall;
   }
+  rc = sqlite3_bind_text(updmsg, 2, "kdc update succeeded", 
+                         strlen("kdc update succeeded"), 
+                         SQLITE_STATIC);
+  if (rc != SQLITE_OK) {
+    sqlite3_step(updmsg);
+    sqlite3_finalize(updmsg);
+    updmsg=NULL;
+  }
+
   if (sql_begin_trans(sess))
     goto dberr;
   dbaction=-1;
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "DELETE FROM keys WHERE principal = ?;",
-			  -1, &del, NULL);
-  if (rc == SQLITE_OK) {
-    rc = sqlite3_bind_int64(del, 0, princid);
-    if (rc == SQLITE_OK)
-      sqlite3_step(del);
-    rc = sqlite3_finalize(del);
-    del=0;
-  }
-  if (rc == SQLITE_OK)
-    rc = sqlite3_prepare_v2(sess->dbh, 
-			    "DELETE FROM acl WHERE principal = ?;",
-			    -1, &del, NULL);
-  if (rc == SQLITE_OK) {
-    rc = sqlite3_bind_int64(del, 0, princid);
-    if (rc == SQLITE_OK)
-      sqlite3_step(del);
-    rc = sqlite3_finalize(del);
-    del=0;
-  }
-  if (rc == SQLITE_OK)
-    rc = sqlite3_prepare_v2(sess->dbh, 
-			    "DELETE FROM principals WHERE id = ?;",
-			    -1, &del, NULL);
-  if (rc == SQLITE_OK) {
-    rc = sqlite3_bind_int64(del, 0, princid);
-    if (rc == SQLITE_OK)
-      sqlite3_step(del);
-    rc = sqlite3_finalize(del);
-    del=0;
-  }
+  rc = do_purge(sess, princid);
   if (rc != SQLITE_OK)
     goto dberr;
   dbaction=1;
+  if (no_send == 0)
+    do_send(sess->ssl, RESP_OK, NULL);
 
   goto freeall;
  dberr:
@@ -1331,6 +1492,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 #endif
     }
   }
+  if (kadm_handle)
+    kadm5_destroy(kadm_handle);
   if (realm) {
 #if defined(HAVE_KRB5_REALM)
     krb5_xfree(realm);
@@ -1345,11 +1508,92 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 }
 static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
+  char *principal=NULL;
+  int desonly;
+  unsigned int l, flag;
+  int rc, kvno;
+  int dbaction=0;
+  sqlite_int64 princid;
+  krb5_principal target=NULL;
+  size_t curlen;
+
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
-  send_error(sess, ERR_BADOP, "Not implemented yet");
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  if (buf_getint(buf, &flag))
+    goto badpkt;
+  if (flag != 0 && flag != REQFLAG_DESONLY) {
+    send_error(sess, ERR_BADREQ, "Invalid flags specified");
+    goto freeall;
+  }
+  desonly=0;
+  if (flag == REQFLAG_DESONLY)
+    desonly=1;
+
+  if (check_target(sess, target))
+    goto freeall;
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  if (sql_begin_trans(sess))
+    goto dberrnomsg;
+  dbaction=-1;
+  
+  princid = setup_principal(sess, principal, target, 0, &kvno);
+  if (princid == 0)
+    goto freeall;
+
+  if (generate_keys(sess, princid, desonly))
+    goto freeall;
+
+  if (buf_setlength(buf, 12 + strlen(principal))) /* name length, kvno */
+    goto memerr;
+  if (buf_putint(buf, 1) || buf_putint(buf, l) || 
+      buf_putdata(buf, principal, l) || buf_putint(buf, kvno))
+    goto interr;
+  curlen = 12 + strlen(principal);
+  if (add_keys_one(sess, princid, kvno, buf, &curlen))
+    goto freeall;
+  dbaction=1;
+  
+  goto freeall;
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:
+  if (dbaction > 0)
+    sql_commit_trans(sess);
+  else if (dbaction < 0)
+    sql_rollback_trans(sess);
+
+  if (target)
+    krb5_free_principal(sess->kctx, target);
+  free(principal);
 }
 static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
