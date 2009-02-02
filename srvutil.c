@@ -137,6 +137,7 @@ void send_fatal(struct rekey_session *sess, int errcode, char *msg)
     return;
   do_send(sess->ssl, RESP_FATAL, msgbuf);
   buf_free(msgbuf);
+  do_finalize(sess);
 }
 
 static void send_gss_error_cb(void *rock, gss_buffer_t status_string) 
@@ -188,7 +189,6 @@ void send_gss_token(struct rekey_session *sess, int opcode,
   auth=buf_alloc(tok->length+8);
   if (auth == NULL) {
     send_fatal(sess, ERR_OTHER, "Cannot allocate memory on server");
-    do_finalize(sess);
     fatal("Cannot authenticate: memory allocation failed: %s",
 	  strerror(errno));
   }
@@ -200,7 +200,6 @@ void send_gss_token(struct rekey_session *sess, int opcode,
       buf_putint(auth, tok->length) ||
       buf_putdata(auth, tok->value, tok->length)) {
     send_fatal(sess, ERR_OTHER, "Internal error on server");
-    do_finalize(sess);
     fatal("internal error: cannot pack authentication structure");
   }
     

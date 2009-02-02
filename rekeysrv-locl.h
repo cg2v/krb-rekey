@@ -31,6 +31,13 @@
 #if defined(HAVE_KRB5_C_MAKE_RANDOM_KEY) && !defined(HAVE_KRB5_GENERATE_RANDOM_KEYBLOCK)
 #define krb5_generate_random_keyblock krb5_c_make_random_key
 #endif
+#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
+#define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
+#elif defined (HAVE_KRB5_PRINC_REALM) && defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
+#define KRB5_PRINCIPAL_MIT_STYLE 1
+#else
+#error Cannot figure out how krb5_principal accessors work
+#endif
 #endif
 
 #ifdef NEED_GSSAPI
@@ -58,6 +65,7 @@ SSL *do_ssl_accept(int s);
 
 #ifdef SESS_PRIVATE
 struct rekey_session {
+  int initialized;
   SSL *ssl;
   krb5_context kctx;
   gss_ctx_id_t gctx;
@@ -81,6 +89,7 @@ struct sockaddr;
 
 void child_cleanup(void) ;
 void ssl_startup(void);
+void ssl_cleanup(void);
 void net_startup(void);
 void run_session(int);
 void do_finalize(struct rekey_session *);

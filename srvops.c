@@ -108,16 +108,16 @@ static krb5_enctype future_enctypes[] = {
 static void check_authz(struct rekey_session *sess) 
 {
   char *realm;
-#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_REALM)
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm, *c1, *c2, *c3;
-#elif defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   krb5_data *princ_realm, *c1, *c2;
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
   if (krb5_get_default_realm(sess->kctx, &realm))
     return;
-#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_REALM)
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 
   princ_realm = krb5_principal_get_realm(sess->kctx, sess->princ); 
   if (!princ_realm || strncmp(princ_realm , realm, strlen(realm)))
@@ -143,7 +143,7 @@ static void check_authz(struct rekey_session *sess)
 
  out:
   krb5_xfree(realm);
-#elif defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
 
   princ_realm = krb5_princ_realm(sess->kctx, sess->princ); 
   if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm)))
@@ -174,7 +174,7 @@ static void check_authz(struct rekey_session *sess)
 #endif
 }
 
-static void do_auth(struct rekey_session *sess, mb_t buf) {
+static void s_auth(struct rekey_session *sess, mb_t buf) {
   OM_uint32 maj, min, tmin, rflag;
   gss_buffer_desc in, out, outname;
   unsigned int f;
@@ -189,7 +189,6 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
   if (krb5_init_context(&sess->kctx)) {
       
       send_fatal(sess, ERR_OTHER, "Internal kerberos error on server");
-      do_finalize(sess);
       fatal("Authentication failed: krb5_init_context failed");
   }  
   reset_cursor(buf);
@@ -221,14 +220,12 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
     gss_more_accept=1;
     if (out.length == 0) {
       send_fatal(sess, ERR_OTHER, "Internal gss error on server");
-      do_finalize(sess);
       fatal("Authentication failed: not sending a gss token but expects a reply");
     }
   }
 
   if (out.length && gss_more_init == 0) {
     send_fatal(sess, ERR_OTHER, "Internal gss error on server");
-    do_finalize(sess);
     fatal("Authentication failed: would send a gss token when remote does not expect one");
   }
 
@@ -237,20 +234,17 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
     unsigned short oidl;
     if ((~rflag) & (GSS_C_MUTUAL_FLAG|GSS_C_INTEG_FLAG)) {
       send_fatal(sess, ERR_AUTHN, "GSSAPI mechanism does not provide data integrity services");
-      do_finalize(sess);
       fatal("GSSAPI mechanism does not provide data integrity services");
     }   
     maj = gss_export_name(&min, sess->name, &outname);
     if (GSS_ERROR(maj)) {
       prt_gss_error(sess->mech, maj, min);
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (cannot export name from GSSAPI)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (cannot export name from GSSAPI)");
     }
     /* check for minimum length and correct token header */
     if (outname.length < 6 || memcmp(outname.value, "\x04\x01", 2)) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (it is not a valid exported name)");
     }
     p = outname.value;
@@ -263,7 +257,6 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
        even if valid) */
     if (outname.length < 4 + oidl || *p++ != 0x6 || *p >= 0x80 || *p++ != oidl - 2 ) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (it is not a valid exported name)");
     }
     oidl -= 2;
@@ -271,7 +264,6 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
     if (gss_mech_krb5->length != oidl || 
 	memcmp(p, gss_mech_krb5->elements, oidl)) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a kerberos name)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (it is not a kerberos name)");
     }
     /* skip oid */
@@ -279,7 +271,6 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
     if (buf_setlength(buf, outname.length) ||
         buf_putdata(buf, outname.value, outname.length)) {
       send_fatal(sess, ERR_OTHER, "Internal error on server");
-      do_finalize(sess);
       fatal("internal error: cannot copy name structure");
     }      
     /* skip over the header we already parsed */
@@ -287,24 +278,20 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
     gss_release_buffer(&tmin, &outname);
     if (buf_getint(buf, &f)) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (buffer is too short)");
     }
     sess->plain_name=malloc(f + 1);
     if (!sess->plain_name) {
       send_fatal(sess, ERR_OTHER, "Internal error on server");
-      do_finalize(sess);
       fatal("Cannot allocate memory");
     }
     if (buf_getdata(buf, sess->plain_name, f)) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (buffer is broken [name length=%d, input buffer size=%d])", f, outname.length - (p - (unsigned char *)outname.value) - 4);
     }
     sess->plain_name[f]=0;
     if ((rc=krb5_parse_name(sess->kctx, sess->plain_name, &sess->princ))) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      do_finalize(sess);
       fatal("Cannot parse authenticated name (kerberos error %s)", krb5_get_err_text(sess->kctx, rc));
     }
     sess->authstate=1;
@@ -323,7 +310,7 @@ static void do_auth(struct rekey_session *sess, mb_t buf) {
   send_error(sess, ERR_BADREQ, "Packet was too short for opcode");
   return;
 }
-static void do_autherr(struct rekey_session *sess, mb_t buf) 
+static void s_autherr(struct rekey_session *sess, mb_t buf) 
 {
   OM_uint32 maj, min;
   gss_buffer_desc in, out;
@@ -362,7 +349,7 @@ static void do_autherr(struct rekey_session *sess, mb_t buf)
   return;
 }
 
-static void do_authchan(struct rekey_session *sess, mb_t buf) 
+static void s_authchan(struct rekey_session *sess, mb_t buf) 
 {
   OM_uint32 maj, min, qop;
   gss_buffer_desc in, out;
@@ -381,27 +368,23 @@ static void do_authchan(struct rekey_session *sess, mb_t buf)
  flen = SSL_get_finished(sess->ssl, NULL, 0);
  if (flen == 0) {
    send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   do_finalize(sess);
    fatal("Cannot authenticate: ssl finished message not available");
  }    
  in.length = 2 * flen;
  in.value = malloc(in.length);
  if (in.value == NULL) {
    send_fatal(sess, ERR_AUTHN, "Internal error; out of memory");
-   do_finalize(sess);
    fatal("Cannot authenticate: memory allocation failed: %s",
          strerror(errno));
  }
  p=in.value;
  if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
    send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   do_finalize(sess);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }    
  p+=flen;
  if (flen != SSL_get_finished(sess->ssl, p, flen)) {
    send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   do_finalize(sess);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }
 
@@ -411,7 +394,6 @@ static void do_authchan(struct rekey_session *sess, mb_t buf)
  maj = gss_verify_mic(&min, sess->gctx, &in, &out, &qop);
  if (maj == GSS_S_BAD_SIG) {
    send_fatal(sess, ERR_AUTHN, "Channel binding verification failed");
-   do_finalize(sess);
    fatal("channel binding verification failed (signature does not match)");
  }
  if (GSS_ERROR(maj)) {
@@ -423,13 +405,11 @@ static void do_authchan(struct rekey_session *sess, mb_t buf)
  p=in.value;
  if (flen != SSL_get_finished(sess->ssl, p, flen)) {
    send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   do_finalize(sess);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }    
  p+=flen;
  if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
    send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   do_finalize(sess);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }
  memset(&out, 0, sizeof(out));
@@ -437,13 +417,11 @@ static void do_authchan(struct rekey_session *sess, mb_t buf)
  free(in.value);
  if (GSS_ERROR(maj)) {
    send_gss_error(sess, sess->mech, maj, min);
-   do_finalize(sess);
    exit(1);
  }
  if (buf_setlength(buf, out.length) ||
      buf_putdata(buf, out.value, out.length)) {
     send_fatal(sess, ERR_OTHER, "Internal error on server");
-    do_finalize(sess);
     fatal("internal error: cannot pack channel binding structure");
  }
  
@@ -468,7 +446,7 @@ static void do_authchan(struct rekey_session *sess, mb_t buf)
 #endif
 }
 
-static void do_newreq(struct rekey_session *sess, mb_t buf) 
+static void s_newreq(struct rekey_session *sess, mb_t buf) 
 {
   char *principal=NULL;
   char **hostnames=NULL;
@@ -485,12 +463,10 @@ static void do_newreq(struct rekey_session *sess, mb_t buf)
   void *kadm_handle=NULL;
   kadm5_config_params kadm_param;
   char *realm;
-#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_REALM)
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm;
-#elif defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
+#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
   krb5_data *princ_realm;
-#else
-#error Cannot figure out how krb5_principals objects work
 #endif
   krb5_principal target=NULL;
   kadm5_principal_ent_rec ke;
@@ -543,7 +519,7 @@ static void do_newreq(struct rekey_session *sess, mb_t buf)
     prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
     goto interr;
   }
-#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_REALM)
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 
   princ_realm = krb5_principal_get_realm(sess->kctx, sess->princ); 
   if (!princ_realm || strncmp(princ_realm , realm, strlen(realm))) {
@@ -551,7 +527,7 @@ static void do_newreq(struct rekey_session *sess, mb_t buf)
     goto freeall;
   }
 
-#elif defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
+#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
 
   princ_realm = krb5_princ_realm(sess->kctx, sess->princ); 
   if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm))) {
@@ -741,7 +717,7 @@ static void do_newreq(struct rekey_session *sess, mb_t buf)
   }
 }
 
-static void do_status(struct rekey_session *sess, mb_t buf)
+static void s_status(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *st=NULL;
   char *principal = NULL;
@@ -833,7 +809,7 @@ static void do_status(struct rekey_session *sess, mb_t buf)
   free(principal);
 }
 
-static void do_getkeys(struct rekey_session *sess, mb_t buf)
+static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
   int m, n, rc;
   size_t l, curlen, last;
@@ -1015,7 +991,7 @@ static int prepare_kadm_key(krb5_keyblock *k, int kvno, int enctype, int keylen,
 }
 #endif    
 
-static void do_commitkey(struct rekey_session *sess, mb_t buf)
+static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
   sqlite3_stmt *checkcomp=NULL, *updmsg=NULL, *selkey=NULL;
@@ -1367,7 +1343,7 @@ static void do_commitkey(struct rekey_session *sess, mb_t buf)
   free(principal);
 
 }
-static void do_simplekey(struct rekey_session *sess, mb_t buf)
+static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
@@ -1375,7 +1351,7 @@ static void do_simplekey(struct rekey_session *sess, mb_t buf)
   }
   send_error(sess, ERR_BADOP, "Not implemented yet");
 }
-static void do_abortreq(struct rekey_session *sess, mb_t buf)
+static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
@@ -1386,15 +1362,15 @@ static void do_abortreq(struct rekey_session *sess, mb_t buf)
 
 static void (*func_table[])(struct rekey_session *, mb_t) = {
   NULL,
-  do_auth,
-  do_autherr,
-  do_authchan,
-  do_newreq,
-  do_status,
-  do_getkeys,
-  do_commitkey,
-  do_simplekey,
-  do_abortreq
+  s_auth,
+  s_autherr,
+  s_authchan,
+  s_newreq,
+  s_status,
+  s_getkeys,
+  s_commitkey,
+  s_simplekey,
+  s_abortreq
 };
 
 void run_session(int s) {
@@ -1410,11 +1386,13 @@ void run_session(int s) {
   }
   sess.ssl = do_ssl_accept(s);
   child_cleanup();
+  sess.initialized=1;
   for (;;) {
     opcode = do_recv(sess.ssl, buf);
     
     if (opcode == -1) {
       do_finalize(&sess);
+      ssl_cleanup();
       fatal("Connection closed");
     }
     if (sess.authstate != 2 && opcode > 3) {
@@ -1426,6 +1404,8 @@ void run_session(int s) {
        send_error(&sess, ERR_BADOP, "Function code was out of range");
     } else {
       func_table[opcode](&sess, buf);
+      if (sess.initialized == 0)
+        fatal("session terminated during operation %d, but handler did not exit", opcode);
     }
   }
 }

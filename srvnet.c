@@ -117,7 +117,14 @@ void ssl_startup(void) {
 #endif
 }
 
-
+void ssl_cleanup(void) {
+  if (sslctx)
+    SSL_CTX_free(sslctx);
+  sslctx=NULL;
+  EVP_cleanup();
+  ERR_free_strings();
+  CRYPTO_cleanup_all_ex_data();
+}
 static int listenfds[16];
 static int nlfds;
 
@@ -178,7 +185,9 @@ void net_startup(void) {
 SSL *do_ssl_accept(int s) {
   SSL *ret;
   int rc;
-  
+
+  if (!sslctx)
+    fatal("SSL not initialized");  
   ret=SSL_new(sslctx);
   if (!ret)
     ssl_fatal(NULL, 0);
@@ -201,7 +210,9 @@ void child_cleanup(void)
     close(listenfds[i]);
     listenfds[i]=-1;
   }
-  SSL_CTX_free(sslctx);
+  if (sslctx)
+    SSL_CTX_free(sslctx);
+  sslctx=NULL;
 }
 
 int run_accept_loop(void (*cb)(int , struct sockaddr *))

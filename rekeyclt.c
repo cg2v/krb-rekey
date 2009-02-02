@@ -91,6 +91,14 @@ static void ssl_startup(void) {
        ssl_fatal(NULL, 0);
 }
 
+static void ssl_cleanup(void) {
+  if (sslctx)
+    SSL_CTX_free(sslctx);
+  sslctx=NULL;
+  EVP_cleanup();
+  ERR_free_strings();
+  CRYPTO_cleanup_all_ex_data();
+}
 static SSL *do_connect(char *hostname) {
      SSL *ret;
      struct addrinfo ahints, *conn, *p;
@@ -708,5 +716,6 @@ int main(int argc, char **argv) {
     
   SSL_shutdown(conn);
   SSL_free(conn);
+  ssl_cleanup();
   return 0;
 }
