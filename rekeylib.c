@@ -268,4 +268,5 @@ void prt_err_reply(mb_t resp) {
     q += my_strnlen(q, len - (q - msg));
     q++;
   }
+  free(msg);
 }

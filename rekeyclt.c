@@ -216,6 +216,7 @@ static void do_auth(SSL *ssl, char *hostname) {
    if (out.length) {
      mb_t auth;
      OM_uint32 f;
+     unsigned int l;
 
      auth = buf_alloc(out.length + 8);
      if (auth == NULL) {
@@ -253,10 +254,11 @@ static void do_auth(SSL *ssl, char *hostname) {
        if (resp == RESP_AUTH || resp == RESP_AUTHERR) {
 	 reset_cursor(auth);
          if (buf_getint(auth, &f) ||
-	     buf_getint(auth, (unsigned int *)&in.length)) {
+	     buf_getint(auth, &l)) {
 	   SSL_shutdown(ssl);
 	   fatal("Cannot authenticate: server sent malformed reply");
 	 }   
+         in.length=l;
 	 in.value=malloc(in.length);
 	 if (in.value == NULL) {
 	   SSL_shutdown(ssl);
