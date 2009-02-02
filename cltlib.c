@@ -77,7 +77,7 @@ void vprtmsg(const char *msg, va_list ap) {
      fputs("\n", stderr);
 }
 
-static void ssl_startup(void) {
+void ssl_startup(void) {
   int rc;
      SSL_library_init();
      ERR_load_crypto_strings();
@@ -91,7 +91,7 @@ static void ssl_startup(void) {
        ssl_fatal(NULL, 0);
 }
 
-static void ssl_cleanup(void) {
+void ssl_cleanup(void) {
   if (sslctx)
     SSL_CTX_free(sslctx);
   sslctx=NULL;
@@ -99,7 +99,7 @@ static void ssl_cleanup(void) {
   ERR_free_strings();
   CRYPTO_cleanup_all_ex_data();
 }
-static SSL *do_connect(char *hostname) {
+SSL *c_connect(char *hostname) {
      SSL *ret;
      struct addrinfo ahints, *conn, *p;
      int s;
@@ -146,7 +146,7 @@ static SSL *do_connect(char *hostname) {
      return ret;
 }
 
-static int sendrcv(SSL *ssl, int opcode, mb_t data) {
+int sendrcv(SSL *ssl, int opcode, mb_t data) {
   int ret;
   do_send(ssl, opcode, data);
   ret=do_recv(ssl, data);
@@ -158,7 +158,7 @@ static int sendrcv(SSL *ssl, int opcode, mb_t data) {
   return ret;
 }
 
-static void do_auth(SSL *ssl, char *hostname) {
+void c_auth(SSL *ssl, char *hostname) {
  unsigned char *p;
      
  OM_uint32 maj, min, rflag;
@@ -378,7 +378,7 @@ static void do_auth(SSL *ssl, char *hostname) {
  gss_release_name(&min, &n);
 }
 
-void do_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts) 
+void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts) 
 {
   mb_t buf;
   size_t curlen;
@@ -435,7 +435,7 @@ void do_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
   buf_free(buf);
 }
 
-void do_status(SSL *ssl, char *princ) {
+void c_status(SSL *ssl, char *princ) {
   mb_t buf;
   unsigned int f, i, n, l, resp;
   char *hostname=NULL, *new;
@@ -521,7 +521,7 @@ void do_status(SSL *ssl, char *princ) {
 #define krb5_get_err_text(c, r) error_message(r)
 #endif
 
-void do_getkeys(SSL *ssl) {
+void c_getkeys(SSL *ssl) {
   krb5_context ctx=NULL;
   krb5_keytab kt=NULL;
   krb5_keytab_entry ent;
@@ -697,25 +697,4 @@ void do_getkeys(SSL *ssl) {
     SSL_shutdown(ssl);
     fatal("Exiting due to previous errors");
   }
-}
-int main(int argc, char **argv) {
-  SSL *conn;
-
-  ssl_startup();
-
-  conn=do_connect("sphinx.andrew.cmu.edu");
-  do_auth(conn, "sphinx.andrew.cmu.edu");
-  printf("Attach to remote server if required, then press return\n");
-  getc(stdin);
-  if (argc > 2)
-    do_newreq(conn, argv[1], 0, argc - 2, argv + 2);
-  else if (argc == 2)
-    do_status(conn, argv[1]);
-  else 
-    do_getkeys(conn);
-    
-  SSL_shutdown(conn);
-  SSL_free(conn);
-  ssl_cleanup();
-  return 0;
 }

@@ -46,7 +46,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <openssl/ssl.h>
+#ifdef HEADER_GSSAPI_GSSAPI
+#include <gssapi/gssapi.h>
+#else
+#include <gssapi.h>
+#endif
 
+#include "memmgt.h"
 #include "rekey-locl.h"
 #include "rekeyclt-locl.h"
 
@@ -55,16 +62,16 @@ int main(int argc, char **argv) {
 
   ssl_startup();
 
-  conn=do_connect("sphinx.andrew.cmu.edu");
-  do_auth(conn, "sphinx.andrew.cmu.edu");
+  conn=c_connect("sphinx.andrew.cmu.edu");
+  c_auth(conn, "sphinx.andrew.cmu.edu");
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
   if (argc > 2)
-    do_newreq(conn, argv[1], 0, argc - 2, argv + 2);
+    c_newreq(conn, argv[1], 0, argc - 2, argv + 2);
   else if (argc == 2)
-    do_status(conn, argv[1]);
+    c_status(conn, argv[1]);
   else 
-    do_getkeys(conn);
+    c_getkeys(conn);
     
   SSL_shutdown(conn);
   SSL_free(conn);
