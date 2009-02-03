@@ -1,12 +1,16 @@
 AUTOMAKE_OPTIONS=foreign 1.9
 bin_PROGRAMS=rekeyclt
 sbin_PROGRAMS=rekeysrv
+noinst_PROGRAMS=rekeytest
 EXTRA_DIST=*.pem m4/gnulib-cache.m4
 BUILT_SOURCES=sqlinit.c dhp512.c dhp3072.c
 CLEANFILES = sqlinit.c dhp512.c dhp3072.c
+CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c
 rekeysrv_DEPENDENCIES=sqlinit.c dhp512.c dhp3072.c
-rekeyclt_SOURCES=rekeyclt.c cltlib.c rekeylib.c memmgt.c
+rekeyclt_SOURCES=rekeyclt.c $(CLIENT_SOURCES)
 rekeyclt_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
+rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
+rekeytest_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
 rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c srvutil.c rekeylib.c memmgt.c
 rekeysrv_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ @LIB_KADMS@ @LIB_KRB5@ @LIB_SQLITE3@
 
