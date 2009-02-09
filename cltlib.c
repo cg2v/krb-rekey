@@ -51,6 +51,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <ctype.h>
 /* gnulib */
 #include "getaddrinfo.h"
 #ifdef HAVE_KRB5_KRB5_H
@@ -99,6 +100,43 @@ void ssl_cleanup(void) {
   ERR_free_strings();
   CRYPTO_cleanup_all_ex_data();
 }
+void c_close(SSL *ssl) {
+  SSL_shutdown(ssl);
+  SSL_free(ssl);
+}
+char *get_server(char *realm) {
+  krb5_context ctx;
+  char *host, *ret=NULL, *intrealm=NULL;
+  int i;
+
+  if (krb5_init_context(&ctx))
+    fatal("Cannot initialize krb context");
+  if (!realm) {
+    if (krb5_get_default_realm(ctx, &intrealm))
+      fatal("Cannot get default kerberos realm");
+    realm=intrealm;
+  }
+  ret = malloc(6+ strlen(realm) + 1);
+  if (!ret)
+    goto out;
+  sprintf(ret, "rekey.%s", realm);
+  for (i=0;i<6+ strlen(ret);i++) {
+    if (isalpha(ret[i]) && isupper(ret[i]))
+      ret[i]=tolower(ret[i]);
+  }
+ out:
+  if (intrealm) {
+#ifdef HAVE_KRB5_REALM
+    krb5_xfree(realm);
+#else
+    krb5_free_default_realm(ctx, realm);
+#endif
+  }
+  krb5_free_context(ctx);
+  return ret;
+}
+
+
 SSL *c_connect(char *hostname) {
      SSL *ret;
      struct addrinfo ahints, *conn, *p;
@@ -151,8 +189,7 @@ int sendrcv(SSL *ssl, int opcode, mb_t data) {
   do_send(ssl, opcode, data);
   ret=do_recv(ssl, data);
   if (ret == -1) {
-     SSL_shutdown(ssl);
-     SSL_free(ssl);
+     c_close(ssl);
      fatal("Connection closed");
   }
   return ret;
@@ -184,7 +221,7 @@ void c_auth(SSL *ssl, char *hostname) {
      
  if (GSS_ERROR(maj)) {
    prt_gss_error(GSS_C_NO_OID, maj, min);
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate");
  }
      
@@ -207,18 +244,18 @@ void c_auth(SSL *ssl, char *hostname) {
        gss_more_init=0;
      } else {
        if (out.length == 0) {
-         SSL_shutdown(ssl);
+         c_close(ssl);
          fatal("Authentication failed: not sending a gss token but expects a reply");
        }
      }
    }
    if (resp == RESP_AUTHERR) {
-     SSL_shutdown(ssl);
+     c_close(ssl);
      exit(1);
    }
    
    if (out.length && gss_more_accept == 0) {
-     SSL_shutdown(ssl);
+     c_close(ssl);
      fatal("Authentication failed: would send a gss token when remote does not expect one");
    }
    
@@ -229,7 +266,7 @@ void c_auth(SSL *ssl, char *hostname) {
 
      auth = buf_alloc(out.length + 8);
      if (auth == NULL) {
-       SSL_shutdown(ssl);
+       c_close(ssl);
        fatal("Cannot authenticate: memory allocation failed: %s",
              strerror(errno));
      }
@@ -242,20 +279,20 @@ void c_auth(SSL *ssl, char *hostname) {
      if (buf_putint(auth, f) || 
 	 buf_putint(auth, out.length) ||
 	 buf_putdata(auth,  out.value, out.length)) {
-       SSL_shutdown(ssl);
+       c_close(ssl);
        fatal("internal error: cannot pack authentication structure");
      }
                
      resp = sendrcv(ssl, GSS_ERROR(maj) ? OP_AUTHERR : OP_AUTH, auth);
      if (resp == RESP_ERR || resp == RESP_FATAL) {
-       SSL_shutdown(ssl);
+       c_close(ssl);
        prt_err_reply(auth);
        exit(1);
      }
      if (resp == RESP_OK) {
        buf_free(auth);
        if (gss_more_init) {
-         SSL_shutdown(ssl);
+         c_close(ssl);
          fatal("Cannot authenticate: server did not send authentication reply");
        }
        gss_more_accept = 0;
@@ -264,18 +301,18 @@ void c_auth(SSL *ssl, char *hostname) {
 	 reset_cursor(auth);
          if (buf_getint(auth, &f) ||
 	     buf_getint(auth, &l)) {
-	   SSL_shutdown(ssl);
+	   c_close(ssl);
 	   fatal("Cannot authenticate: server sent malformed reply");
 	 }   
          in.length=l;
 	 in.value=malloc(in.length);
 	 if (in.value == NULL) {
-	   SSL_shutdown(ssl);
+	   c_close(ssl);
 	   fatal("Cannot authenticate: memory allocation failed: %s",
              strerror(errno));
 	 }
 	 if (buf_getdata(auth, in.value, in.length)) {
-	   SSL_shutdown(ssl);
+	   c_close(ssl);
 	   fatal("Cannot authenticate: server sent malformed reply");
 	 }   
 	 buf_free(auth);
@@ -286,48 +323,48 @@ void c_auth(SSL *ssl, char *hostname) {
 
          inp = &in;
        } else {
-         SSL_shutdown(ssl);
+         c_close(ssl);
          fatal("Cannot authenticate: server sent unexpected response %d", resp);
        }                    
      }       
    }
    if (GSS_ERROR(maj)) {
-     SSL_shutdown(ssl);
+     c_close(ssl);
      exit(1);
    }
  } while (gss_more_init);
  if ((~rflag) & (GSS_C_MUTUAL_FLAG|GSS_C_INTEG_FLAG)) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("GSSAPI mechanism does not provide data integrity services");
  }
 
  flen = SSL_get_finished(ssl, NULL, 0);
  if (flen == 0) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: ssl finished message not available");
  }    
  in.length = 2 * flen;
  in.value = malloc(in.length);
  if (in.value == NULL) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: memory allocation failed: %s",
          strerror(errno));
  }
  p=in.value;
  if (flen != SSL_get_finished(ssl, p, flen)) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }    
  p+=flen;
  if (flen != SSL_get_peer_finished(ssl, p, flen)) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }
      
  maj = gss_get_mic(&min, gctx, GSS_C_QOP_DEFAULT, &in, &out);
  if (GSS_ERROR(maj)) {
    prt_gss_error(mech, maj, min);
-   SSL_shutdown(ssl);
+   c_close(ssl);
    exit(1);
  }
 
@@ -338,12 +375,12 @@ void c_auth(SSL *ssl, char *hostname) {
   buf_putdata(mic, out.value, out.length);
   resp = sendrcv(ssl, OP_AUTHCHAN, mic);
   if (resp == RESP_ERR || resp == RESP_FATAL) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    prt_err_reply(mic);
    exit(1);
  }
  if (resp != RESP_AUTHCHAN) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: server sent unexpected response %d", 
          resp);
  }
@@ -353,24 +390,24 @@ void c_auth(SSL *ssl, char *hostname) {
 
  p=in.value;
  if (flen != SSL_get_peer_finished(ssl, p, flen)) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }    
  p+=flen;
  if (flen != SSL_get_finished(ssl, p, flen)) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
  }    
  maj = gss_verify_mic(&min, gctx, &in, &out, &qop);
  buf_free(mic);
  if (maj == GSS_S_BAD_SIG) {
-   SSL_shutdown(ssl);
+   c_close(ssl);
    fatal("channel binding verification failed (signature does not match)");
  }
      
  if (GSS_ERROR(maj)) {
    prt_gss_error(mech, maj, min);
-   SSL_shutdown(ssl);
+   c_close(ssl);
    exit(1);
  }
  free(in.value);
@@ -390,7 +427,7 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
   }
   buf = buf_alloc(4 + strlen(princ) + 4 + 4 + nhosts * (4 + strlen(hosts[0])));
   if (!buf) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
   curlen=4 + strlen(princ) + 4 + 4;
@@ -399,19 +436,19 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
       buf_putdata(buf, princ, strlen(princ)) ||
       buf_putint(buf, flag) ||
       buf_putint(buf, nhosts)) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
   for (i=0;i<nhosts;i++) {
     int l = strlen(hosts[i]);
     if (buf_setlength(buf, curlen + 4 + l)) {
-      SSL_shutdown(ssl);
+      c_close(ssl);
       fatal("Cannot extend buffer: %s", strerror(errno));
     } 
     set_cursor(buf, curlen);
     if (buf_putint(buf, l) ||
         buf_putdata(buf, hosts[i], l)) {
-      SSL_shutdown(ssl);
+      c_close(ssl);
       fatal("Internal error: Cannot append to buffer");
     } 
     curlen = curlen + 4 + l;
@@ -423,7 +460,7 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
   }
   if (resp == RESP_FATAL) {
     prt_err_reply(buf);
-    SSL_shutdown(ssl);
+    c_close(ssl);
     exit(1);
   }
   if (resp != RESP_OK) {
@@ -443,14 +480,14 @@ void c_status(SSL *ssl, char *princ) {
 
   buf = buf_alloc(4 + strlen(princ));
   if (!buf) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
   curlen=4 + strlen(princ);
   if (buf_setlength(buf, curlen) ||
       buf_putint(buf, strlen(princ)) ||
       buf_putdata(buf, princ, strlen(princ))) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
   resp = sendrcv(ssl, OP_STATUS, buf);
@@ -460,7 +497,7 @@ void c_status(SSL *ssl, char *princ) {
   }
   if (resp == RESP_FATAL) {
     prt_err_reply(buf);
-    SSL_shutdown(ssl);
+    c_close(ssl);
     exit(1);
   }
   if (resp != RESP_STATUS) {
@@ -484,7 +521,7 @@ void c_status(SSL *ssl, char *princ) {
     }
     new = realloc(hostname, l + 1);
     if (!new) {
-      SSL_shutdown(ssl);
+      c_close(ssl);
       fatal("Cannot allocate memory");
     }
     hostname=new;
@@ -536,12 +573,12 @@ void c_getkeys(SSL *ssl) {
 
   buf=buf_alloc(1);
   if (!buf) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
   commitbuf=buf_alloc(1);
   if (!commitbuf) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
   rc = krb5_init_context(&ctx);
@@ -566,7 +603,7 @@ void c_getkeys(SSL *ssl) {
   }
   if (resp == RESP_FATAL) {
     prt_err_reply(buf);
-    SSL_shutdown(ssl);
+    c_close(ssl);
     exit(1);
   }
   if (resp != RESP_KEYS) {
@@ -584,7 +621,7 @@ void c_getkeys(SSL *ssl) {
     } 
     new = realloc(principal, l+1);
     if (!new) {
-      SSL_shutdown(ssl);
+      c_close(ssl);
       fatal("Memory allocation failed: %s", strerror(errno));
     } 
     principal = new;
@@ -617,7 +654,7 @@ void c_getkeys(SSL *ssl) {
       Z_keylen(&key) = l;
       Z_keydata(&key) = malloc(l);
       if (!Z_keydata(&key)) {
-	SSL_shutdown(ssl);
+	c_close(ssl);
 	fatal("Memory allocation failed: %s", strerror(errno));
       } 
       if (buf_getdata(buf, Z_keydata(&key), l)) {
@@ -658,13 +695,13 @@ void c_getkeys(SSL *ssl) {
     /* maybe close & reopen keytab? */
     if (skip == 0 && no_send == 0 && no_send_single == 0) {
       if (buf_setlength(commitbuf, 8+strlen(principal))) {
-	SSL_shutdown(ssl);
+	c_close(ssl);
 	fatal("Internal error: Cannot extend buffer: %s", strerror(errno));
       }
       if (buf_putint(commitbuf, strlen(principal)) ||
 	  buf_putdata(commitbuf, principal, strlen(principal)) ||
 	  buf_putint(commitbuf, kvno)) {
-	SSL_shutdown(ssl);
+	c_close(ssl);
 	fatal("Internal error: Cannot append to buffer");
       } 
       resp = sendrcv(ssl, OP_COMMITKEY, commitbuf);
@@ -694,7 +731,76 @@ void c_getkeys(SSL *ssl) {
     krb5_free_context(ctx);
   }
   if (no_send) {
-    SSL_shutdown(ssl);
+    c_close(ssl);
     fatal("Exiting due to previous errors");
   }
+}
+
+void c_abort(SSL *ssl, char *princ) {
+  mb_t buf;
+  unsigned int resp;
+  size_t curlen;
+
+  buf = buf_alloc(4 + strlen(princ));
+  if (!buf) {
+    c_close(ssl);
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+  curlen=4 + strlen(princ);
+  if (buf_setlength(buf, curlen) ||
+      buf_putint(buf, strlen(princ)) ||
+      buf_putdata(buf, princ, strlen(princ))) {
+    c_close(ssl);
+    fatal("Cannot extend buffer: %s", strerror(errno));
+  } 
+  resp = sendrcv(ssl, OP_STATUS, buf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(buf);
+    goto out;
+  }
+  if (resp == RESP_FATAL) {
+    prt_err_reply(buf);
+    c_close(ssl);
+    exit(1);
+  }
+  if (resp != RESP_OK) {
+    prtmsg("Unexpected reply type %d from server", resp);
+    goto out;
+  }
+ out:
+  buf_free(buf);
+}
+
+void c_finalize(SSL *ssl, char *princ) {
+  mb_t buf;
+  unsigned int resp;
+  size_t curlen;
+
+  buf = buf_alloc(4 + strlen(princ));
+  if (!buf) {
+    c_close(ssl);
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+  curlen=4 + strlen(princ);
+  if (buf_setlength(buf, curlen) ||
+      buf_putint(buf, strlen(princ)) ||
+      buf_putdata(buf, princ, strlen(princ))) {
+    c_close(ssl);
+    fatal("Cannot extend buffer: %s", strerror(errno));
+  } 
+  resp = sendrcv(ssl, OP_FINALIZE, buf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(buf);
+    goto out;
+  }
+  if (resp == RESP_FATAL) {
+    prt_err_reply(buf);
+    c_close(ssl);
+    exit(1);
+  }
+  if (resp != RESP_OK) {
+    prtmsg("Unexpected reply type %d from server", resp);
+  }
+ out:
+  buf_free(buf);
 }

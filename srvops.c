@@ -126,7 +126,7 @@ static void check_authz(struct rekey_session *sess)
   c2 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 1);
   c3 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 2);
 
-  if (c1 && c2 && !c3 && !strncmp(c1, "host", 5)) {
+  if (c1 && c2 && !c3 && !memcmp(c1, "host", 5)) {
     sess->is_host = 1;
     sess->hostname=malloc(strlen(c2)+1);
     if (sess->hostname)
@@ -136,7 +136,7 @@ static void check_authz(struct rekey_session *sess)
     goto out;
   }
   
-  if (c1 && c2 && !c3 && !strncmp(c2, "admin", 5)) {
+  if (c1 && c2 && !c3 && !memcmp(c2, "admin", 5)) {
     sess->is_admin = 1;
     goto out;
   }
@@ -153,7 +153,8 @@ static void check_authz(struct rekey_session *sess)
   c1 = krb5_princ_component(sess->kctx, sess->princ, 0);
   c2 = krb5_princ_component(sess->kctx, sess->princ, 1);
 
-  if (!strncmp(c1->data, "host", 5)) {
+  if (c1->length == 4 && 
+      !strncmp(c1->data, "host", 4)) {
     sess->is_host = 1;
     sess->hostname=malloc(c2->length+1);
     if (sess->hostname) {
@@ -164,7 +165,7 @@ static void check_authz(struct rekey_session *sess)
     goto out;
   }
   
-  if (!strncmp(c2->data, "admin", 5)) {
+  if (c2->length == 5 && !strncmp(c2->data, "admin", 5)) {
     sess->is_admin = 1;
     goto out;
   }
@@ -224,7 +225,9 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
   if (krb5_princ_size(sess->kctx, target) < 1)
     goto out;
   c1 = krb5_princ_component(sess->kctx, target, 0);
-  if (!c1 || c1->length != strlen(LIMIT_TARGET) || strncmp(c1->data, LIMIT_TARGET, c1->length)) {
+  if (!c1 || 
+      c1->length != strlen(LIMIT_TARGET) || 
+      strcmp(c1->data, LIMIT_TARGET)) {
        send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
@@ -1032,12 +1035,14 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     l = sqlite3_column_bytes(st, 1);
     if (pname == NULL || l == 0)
       goto interr;
-    if (!strncmp(pname, "0", 2) || principal == 0)
+    if (!strcmp(pname, "0") || 
+	principal == 0)
       goto dberr;
     if (buf_setlength(buf, curlen + 8 + l)) /* name length, kvno */
       goto memerr;
     set_cursor(buf, curlen);
-    if (buf_putint(buf, l) || buf_putdata(buf, pname, l) ||
+    if (buf_putint(buf, l) || 
+	buf_putdata(buf, pname, l) ||
 	buf_putint(buf, kvno))
       goto interr;
     if (add_keys_one(sess, principal, kvno, buf, &curlen))
@@ -1161,18 +1166,15 @@ static int do_purge(struct rekey_session *sess, sqlite_int64 princid)
   return rc;
 }
 
-static void s_commitkey(struct rekey_session *sess, mb_t buf)
-{
-  sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
-  sqlite3_stmt *checkcomp=NULL, *updmsg=NULL, *selkey=NULL;
-  sqlite_int64 princid;
-  unsigned int l, kvno, nk=0, match, no_send = 0, enctype, keylen, i;
-  char *principal = NULL;
-  int dbaction=0, rc;
+static int do_finalize_req(struct rekey_session *sess, int no_send, 
+			   char *principal, sqlite_int64 princid, 
+			   krb5_principal target, int kvno) {
+  sqlite3_stmt *updmsg=NULL, *selkey=NULL;
+  int dbaction=0, rc, ret=1;
+  unsigned int nk=0, enctype, keylen, i;
   char *realm=NULL;
   kadm5_config_params kadm_param;
   void *kadm_handle;
-  krb5_principal target=NULL;
   kadm5_principal_ent_rec ke;
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
   krb5_key_data *k=NULL, *newk;
@@ -1182,132 +1184,6 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   int ksz = sizeof(krb5_keyblock);
 #endif
   const unsigned char *keydata;
-    
-
-  if (sess->is_host == 0 && sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized");
-    return;
-  }
-  if (buf_getint(buf, &l))
-    goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
-  rc = krb5_parse_name(sess->kctx, principal, &target);
-  if (rc) {
-    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
-    send_error(sess, ERR_BADREQ, "Bad principal name");
-    goto freeall;
-  }
-
-  if (buf_getint(buf, &kvno))
-    goto badpkt;
-  
-  if (check_target(sess, target))
-    goto freeall;
-
-  if (sql_init(sess))
-    goto dberrnomsg;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT id from principals where name=? and kvno = ?",
-                          -1, &getprinc, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(getprinc, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int(getprinc, 2, kvno);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  princid = -1;
-  while (SQLITE_ROW == sqlite3_step(getprinc)) {
-    princid = sqlite3_column_int64(getprinc, 0);
-    if (princid == 0)
-      goto dberr;
-    match++;
-  }
-  rc = sqlite3_finalize(getprinc);
-  getprinc=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  if (match == 0) {
-    send_error(sess, ERR_AUTHZ, "No rekey for this principal is in progress");
-    prtmsg("%s tried to commit %s %d, but it is not active",
-	   sess->hostname, principal, kvno);
-    goto freeall;
-  }
-
-  if (sess->is_host) {
-    if (sql_begin_trans(sess))
-      goto dberr;
-    dbaction = -1;
-    
-    rc = sqlite3_prepare_v2(sess->dbh, 
-                            "UPDATE acl SET completed = 1 WHERE principal = ? AND hostname = ?;",
-                            -1, &updcomp, NULL);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_int64(updcomp, 1, princid);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_text(updcomp, 2, sess->hostname, 
-                           strlen(sess->hostname), SQLITE_STATIC);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(updcomp);
-    rc = sqlite3_finalize(updcomp);
-    updcomp=NULL;
-    if (rc != SQLITE_OK)
-      goto dberr;
-
-    rc = sqlite3_prepare_v2(sess->dbh, 
-                            "UPDATE principals SET commitcount = commitcount +1 WHERE id = ?;",
-                            -1, &updcount, NULL);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_int64(updcount, 1, princid);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(updcount);
-    rc = sqlite3_finalize(updcount);
-    updcount=NULL;
-    if (rc != SQLITE_OK)
-      goto dberr;
-    dbaction=0;
-    if (sql_commit_trans(sess))
-      goto dberr;
-    /* at this point, the client doesn't care about future errors */
-    do_send(sess->ssl, RESP_OK, NULL);
-    no_send = 1;
-  }
-  
-  rc = sqlite3_prepare_v2(sess->dbh,
-			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
-			  -1, &checkcomp, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int64(checkcomp, 1, princid);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
-    match++;
-  }
-  rc = sqlite3_finalize(checkcomp);
-  checkcomp=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  /* not done yet */
-  if (match) {
-    if (no_send == 0)
-      send_error(sess, ERR_OTHER, "Principal is not ready for commit");
-    goto freeall;
-  }
   
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "UPDATE principals SET message = ? WHERE id = ?;",
@@ -1448,13 +1324,10 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   if (rc != SQLITE_OK)
     goto dberr;
   dbaction=1;
-  if (no_send == 0)
-    do_send(sess->ssl, RESP_OK, NULL);
-
+  ret=0;
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
- dberrnomsg:
   if (no_send == 0)
     send_error(sess, ERR_OTHER, "Server internal error (database failure)");
   goto freeall;
@@ -1466,15 +1339,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   if (no_send == 0)
     send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
   goto freeall;
- badpkt:
-  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:
-  if (getprinc)
-    sqlite3_finalize(getprinc);
-  if (updcomp)
-    sqlite3_finalize(updcomp);
-  if (updcount)
-    sqlite3_finalize(updcount);
   if (updmsg)
     sqlite3_finalize(updmsg);
   if (selkey)
@@ -1501,11 +1366,176 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     krb5_free_default_realm(sess->kctx, realm);
 #endif
   }
+  return ret;
+}
+
+
+static void s_commitkey(struct rekey_session *sess, mb_t buf)
+{
+  sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
+  sqlite3_stmt *checkcomp=NULL;
+  sqlite_int64 princid;
+  unsigned int l, kvno, match, no_send = 0;
+  char *principal = NULL;
+  int dbaction=0, rc;
+  krb5_principal target=NULL;
+    
+
+  if (sess->is_host == 0) {
+    send_error(sess, ERR_AUTHZ, "Not authorized");
+    return;
+  }
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  if (buf_getint(buf, &kvno))
+    goto badpkt;
+  
+  if (check_target(sess, target))
+    goto freeall;
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+                          "SELECT id from principals where name=? and kvno = ?",
+                          -1, &getprinc, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(getprinc, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_int(getprinc, 2, kvno);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  princid = -1;
+  while (SQLITE_ROW == sqlite3_step(getprinc)) {
+    princid = sqlite3_column_int64(getprinc, 0);
+    if (princid == 0)
+      goto dberr;
+    match++;
+  }
+  rc = sqlite3_finalize(getprinc);
+  getprinc=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  if (match == 0) {
+    send_error(sess, ERR_AUTHZ, "No rekey for this principal is in progress");
+    prtmsg("%s tried to commit %s %d, but it is not active",
+	   sess->hostname, principal, kvno);
+    goto freeall;
+  }
+
+  if (sess->is_host) {
+    if (sql_begin_trans(sess))
+      goto dberr;
+    dbaction = -1;
+    
+    rc = sqlite3_prepare_v2(sess->dbh, 
+                            "UPDATE acl SET completed = 1 WHERE principal = ? AND hostname = ?;",
+                            -1, &updcomp, NULL);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int64(updcomp, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_text(updcomp, 2, sess->hostname, 
+                           strlen(sess->hostname), SQLITE_STATIC);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updcomp);
+    rc = sqlite3_finalize(updcomp);
+    updcomp=NULL;
+    if (rc != SQLITE_OK)
+      goto dberr;
+
+    rc = sqlite3_prepare_v2(sess->dbh, 
+                            "UPDATE principals SET commitcount = commitcount +1 WHERE id = ?;",
+                            -1, &updcount, NULL);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_int64(updcount, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updcount);
+    rc = sqlite3_finalize(updcount);
+    updcount=NULL;
+    if (rc != SQLITE_OK)
+      goto dberr;
+    dbaction=0;
+    if (sql_commit_trans(sess))
+      goto dberr;
+    /* at this point, the client doesn't care about future errors */
+    do_send(sess->ssl, RESP_OK, NULL);
+    no_send = 1;
+  }
+  
+  rc = sqlite3_prepare_v2(sess->dbh,
+			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
+			  -1, &checkcomp, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_int64(checkcomp, 1, princid);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
+    match++;
+  }
+  rc = sqlite3_finalize(checkcomp);
+  checkcomp=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  /* not done yet */
+  if (match)
+    goto freeall;
+
+  do_finalize_req(sess, no_send, principal, princid, target, kvno);
+  goto freeall;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  if (no_send == 0)
+    send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ memerr:
+  if (no_send == 0)
+    send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:
+  if (getprinc)
+    sqlite3_finalize(getprinc);
+  if (updcomp)
+    sqlite3_finalize(updcomp);
+  if (updcount)
+    sqlite3_finalize(updcount);
+  if (checkcomp)
+    sqlite3_finalize(checkcomp);
+  if (dbaction > 0)
+    sql_commit_trans(sess);
+  else if (dbaction < 0)
+    sql_rollback_trans(sess);
   if (target)
     krb5_free_principal(sess->kctx, target);  
   free(principal);
 
 }
+
 static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
   char *principal=NULL;
@@ -1604,6 +1634,109 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
   send_error(sess, ERR_BADOP, "Not implemented yet");
 }
 
+static void s_finalize(struct rekey_session *sess, mb_t buf)
+{
+  char *principal = NULL;
+  sqlite3_stmt *getprinc=NULL;
+  sqlite3_stmt *checkcomp=NULL;
+  sqlite_int64 princid;
+  unsigned int l, kvno, match;
+  int rc;
+  krb5_principal target=NULL;
+
+  if (sess->is_admin == 0) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    return;
+  }
+
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+                          "SELECT id, kvno FROM principals WHERE name=?",
+                          -1, &getprinc, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(getprinc, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(getprinc)) {
+    princid = sqlite3_column_int64(getprinc, 0);
+    kvno = sqlite3_column_int(getprinc, 1);
+    if (princid == 0)
+      goto dberr;
+    match++;
+  }
+  
+  rc = sqlite3_finalize(getprinc);
+  getprinc=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  if (match == 0) {
+    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
+    goto freeall;
+  }
+
+  rc = sqlite3_prepare_v2(sess->dbh,
+			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
+			  -1, &checkcomp, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_int64(checkcomp, 1, princid);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
+    match++;
+  }
+  rc = sqlite3_finalize(checkcomp);
+  checkcomp=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  /* not done yet */
+  if (match) {
+    send_error(sess, ERR_OTHER, "Request is not ready to be finalized");
+    goto freeall;
+  } 
+
+  if (do_finalize_req(sess, 0, principal, princid, target, kvno))
+    goto freeall;
+  do_send(sess->ssl, RESP_OK, NULL);
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:  
+  if (getprinc)
+    sqlite3_finalize(getprinc);
+  if (checkcomp)
+    sqlite3_finalize(checkcomp);
+  if (target)
+    krb5_free_principal(sess->kctx, target);  
+  free(principal);
+}
 static void (*func_table[])(struct rekey_session *, mb_t) = {
   NULL,
   s_auth,
@@ -1614,7 +1747,8 @@ static void (*func_table[])(struct rekey_session *, mb_t) = {
   s_getkeys,
   s_commitkey,
   s_simplekey,
-  s_abortreq
+  s_abortreq,
+  s_finalize
 };
 
 void run_session(int s) {

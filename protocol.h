@@ -115,6 +115,15 @@
   N bytes of principal name
 */
 
+/* finalize (complete) an in-progress rekey */
+/* There must not be any hosts which have not yet commited */
+/* requires admin authorization */
+#define OP_FINALIZE 9
+/* data is principal name
+  4 bytes of principal name length
+  N bytes of principal name
+*/
+
 #define MAX_OPCODE OP_ABORTREQ
 
 #define RESP_AUTH 128
@@ -173,6 +182,7 @@
    /* COMMITKEY returns RESP_OK on success */
    /* SIMPLEKEY returns RESP_KEYS on success */
    /* ABORTREQ returns RESP_OK on success */
+   /* FINALIZE returns RESP_OK on success */
 
 
    /* more auth packets are expected */

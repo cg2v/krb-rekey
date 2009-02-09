@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
   int flag=0;
   int optch;
   
-  while ((optch == getopt(argc, argv, "k:r:d")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:d")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "       rekeyclt key principalname\n");
     exit(1);
   }
-  targertname=argv[optind++];
+  targetname=argv[optind++];
   ssl_startup();
   servername = get_server(realm);
   conn = c_connect(servername);
