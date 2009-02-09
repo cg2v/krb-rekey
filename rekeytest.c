@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
   else if (argc == 2)
     c_status(conn, argv[1]);
   else 
-    c_getkeys(conn);
+    c_getkeys(conn, "tmp.keytab");
     
   SSL_shutdown(conn);
   SSL_free(conn);

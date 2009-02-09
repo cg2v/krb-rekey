@@ -104,9 +104,10 @@ void c_close(SSL *ssl) {
   SSL_shutdown(ssl);
   SSL_free(ssl);
 }
+
 char *get_server(char *realm) {
   krb5_context ctx;
-  char *host, *ret=NULL, *intrealm=NULL;
+  char *ret=NULL, *intrealm=NULL;
   int i;
 
   if (krb5_init_context(&ctx))
@@ -120,7 +121,7 @@ char *get_server(char *realm) {
   if (!ret)
     goto out;
   sprintf(ret, "rekey.%s", realm);
-  for (i=0;i<6+ strlen(ret);i++) {
+  for (i=0;i<strlen(ret);i++) {
     if (isalpha(ret[i]) && isupper(ret[i]))
       ret[i]=tolower(ret[i]);
   }
@@ -558,58 +559,19 @@ void c_status(SSL *ssl, char *princ) {
 #define krb5_get_err_text(c, r) error_message(r)
 #endif
 
-void c_getkeys(SSL *ssl) {
-  krb5_context ctx=NULL;
-  krb5_keytab kt=NULL;
+static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf, 
+                        int (*complete)(void *rock, char *principal, int kvno),
+                        void *rock) 
+{
   krb5_keytab_entry ent;
   krb5_keyblock key;
   krb5_error_code rc;
-  mb_t buf, commitbuf;
-  unsigned int l, m, n, resp, i, j, no_send=0, 
+  unsigned int l, m, n, i, j, no_send=0, 
     no_send_single, skip, kvno, et;
   char *new, *principal=NULL;
-
+  
   memset(&ent, 0, sizeof(ent));
-
-  buf=buf_alloc(1);
-  if (!buf) {
-    c_close(ssl);
-    fatal("Memory allocation failed: %s", strerror(errno));
-  } 
-  commitbuf=buf_alloc(1);
-  if (!commitbuf) {
-    c_close(ssl);
-    fatal("Memory allocation failed: %s", strerror(errno));
-  } 
-  rc = krb5_init_context(&ctx);
-  if (rc) {
-    prtmsg("krb5_init_context failed (%s)", krb5_get_err_text(ctx, rc));
-    goto out;
-  } 
-  rc = krb5_kt_resolve(ctx, "WRFILE:tmp.keytab", &kt);
-  if (rc) {
-    rc = krb5_kt_resolve(ctx, "FILE:tmp.keytab", &kt);
-    if (rc) {
-      prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
-      goto out;
-    }
-  } 
-
-  buf_setlength(buf, 0);
-  resp = sendrcv(ssl, OP_GETKEYS, buf);
-  if (resp == RESP_ERR) {
-    prt_err_reply(buf);
-    goto out;
-  }
-  if (resp == RESP_FATAL) {
-    prt_err_reply(buf);
-    c_close(ssl);
-    exit(1);
-  }
-  if (resp != RESP_KEYS) {
-    prtmsg("Unexpected reply type %d from server", resp);
-    goto out;
-  }
+  
   if (buf_getint(buf, &m)) {
     prtmsg("Server sent malformed reply");
     goto out;
@@ -621,7 +583,6 @@ void c_getkeys(SSL *ssl) {
     } 
     new = realloc(principal, l+1);
     if (!new) {
-      c_close(ssl);
       fatal("Memory allocation failed: %s", strerror(errno));
     } 
     principal = new;
@@ -654,7 +615,6 @@ void c_getkeys(SSL *ssl) {
       Z_keylen(&key) = l;
       Z_keydata(&key) = malloc(l);
       if (!Z_keydata(&key)) {
-	c_close(ssl);
 	fatal("Memory allocation failed: %s", strerror(errno));
       } 
       if (buf_getdata(buf, Z_keydata(&key), l)) {
@@ -663,20 +623,32 @@ void c_getkeys(SSL *ssl) {
 	goto out;
       }
       {
-	krb5_keyblock *cmp;
-	rc = krb5_kt_read_service_key(ctx, "FILE:tmp.keytab", ent.principal,
-				      ent.vno, et, &cmp);
+        krb5_keytab_entry cmpe;
+        krb5_keyblock *cmp;
+        
+        memset(&cmpe, 0, sizeof(cmpe));
+	rc = krb5_kt_get_entry(ctx, kt, ent.principal,
+				      ent.vno, et, &cmpe);
 	if (rc == 0) {
+          cmp = kte_keyblock(cmpe);
 	  if (Z_keylen(&key) != Z_keylen(cmp) ||
 	      memcmp(Z_keydata(&key), Z_keydata(cmp), Z_keylen(&key))) {
 	    prtmsg("This keytab has an entry for principal %s, kvno %u, enctype %u with a different key!", 
 		   principal, kvno, et);
-	    no_send_single=1;
-	  }
-	  krb5_free_keyblock(ctx, cmp);
-	  free(Z_keydata(&key));
-	  continue;
-	}
+            if (krb5_kt_remove_entry(ctx, kt, &cmpe)) {
+              prtmsg("krb5_kt_remove_entry failed (%s)", krb5_get_err_text(ctx, rc));
+              krb5_kt_free_entry(ctx, &cmpe);
+              free(Z_keydata(&key));
+              goto out;
+              /* n_send_single=1; continue;*/
+            }              
+	  } else {
+            krb5_kt_free_entry(ctx, &cmpe);
+            free(Z_keydata(&key));
+            continue;
+          }
+        }
+        
       }
       rc = krb5_copy_keyblock_contents(ctx, &key, kte_keyblock(ent));
       free(Z_keydata(&key));
@@ -694,43 +666,147 @@ void c_getkeys(SSL *ssl) {
     }
     /* maybe close & reopen keytab? */
     if (skip == 0 && no_send == 0 && no_send_single == 0) {
-      if (buf_setlength(commitbuf, 8+strlen(principal))) {
-	c_close(ssl);
-	fatal("Internal error: Cannot extend buffer: %s", strerror(errno));
-      }
-      if (buf_putint(commitbuf, strlen(principal)) ||
-	  buf_putdata(commitbuf, principal, strlen(principal)) ||
-	  buf_putint(commitbuf, kvno)) {
-	c_close(ssl);
-	fatal("Internal error: Cannot append to buffer");
-      } 
-      resp = sendrcv(ssl, OP_COMMITKEY, commitbuf);
-      if (resp == RESP_ERR) {
-	prt_err_reply(commitbuf);
-      } else if (resp == RESP_FATAL) {
-	prt_err_reply(commitbuf);
-	/* this connection is dead (don't send any more messages)*/
-	no_send=1; 
-	/* ....but keep processing the keys we received */
-      } else if (resp != RESP_OK) {
-	prtmsg("Unexpected reply type %d from server", resp);
-      }
+      if (complete(rock, principal, kvno))
+        no_send=1;
     }
     krb5_free_principal(ctx, ent.principal);
     memset(&ent, 0, sizeof(ent));
   }
  out:
-  free(principal);
-  buf_free(buf);
+  if (ent.principal)
+    krb5_free_principal(ctx, ent.principal);
+  return no_send;
+}
+
+
+static int g_complete(void *vctx, char *principal, int kvno) 
+{
+  SSL *ssl = vctx;
+  mb_t commitbuf;
+  int resp;
+  
+  commitbuf=buf_alloc(8 + strlen(principal));
+  if (!commitbuf) {
+    c_close(ssl);
+    fatal("Internal error: Cannot get new buffer: %s", strerror(errno));
+  }
+  if (buf_putint(commitbuf, strlen(principal)) ||
+      buf_putdata(commitbuf, principal, strlen(principal)) ||
+      buf_putint(commitbuf, kvno)) {
+    c_close(ssl);
+    fatal("Internal error: Cannot append to buffer");
+  } 
+  resp = sendrcv(ssl, OP_COMMITKEY, commitbuf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(commitbuf);
+  } else if (resp == RESP_FATAL) {
+    prt_err_reply(commitbuf);
+    /* this connection is dead (don't send any more messages)*/
+    /* ....but keep processing the keys we received */
+    buf_free(commitbuf);
+    return 1;
+  } else if (resp != RESP_OK) {
+    prtmsg("Unexpected reply type %d from server", resp);
+  }
   buf_free(commitbuf);
+  return 0;
+}
+
+krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
+{
+  krb5_keytab kt=NULL;
+  char *ktdef=NULL, *ktname=NULL;
+  int rc;
+
+  if (!keytab) {
+    ktdef=malloc(BUFSIZ);
+    if (!ktdef) {
+      fatal("Memory allocation failed: %s", strerror(errno));
+    } 
+    rc = krb5_kt_default_name(ctx, ktdef, BUFSIZ);
+    if (rc) {
+      prtmsg("krb5_kt_default_name failed (%s)", krb5_get_err_text(ctx, rc));
+      goto out;
+    }   
+    keytab = ktdef;
+  }
+  
+  if (!strncmp(keytab, "FILE:", 5))
+    keytab=&keytab[5];
+  if (!strchr(keytab, ':')) {
+    ktname = malloc(8 + strlen(keytab));
+    if (!ktname) {
+      fatal("Memory allocation failed: %s", strerror(errno));
+    } 
+    sprintf(ktname, "WRFILE:%s", keytab);
+    rc = krb5_kt_resolve(ctx, ktname, &kt);
+    if (rc) {
+      sprintf(ktname, "FILE:%s", keytab);
+      rc = krb5_kt_resolve(ctx, ktname, &kt);
+      if (rc) {
+        prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
+        goto out;
+      }
+    } 
+  } else {
+    rc = krb5_kt_resolve(ctx, keytab, &kt);
+    if (rc) {
+      prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
+      goto out;
+    }
+  }
+ out:
+  free(ktdef);
+  free(ktname);
+  return kt;
+}
+
+
+void c_getkeys(SSL *ssl, char *keytab) {
+  krb5_context ctx=NULL;
+  krb5_keytab kt=NULL;
+  mb_t buf;
+  int rc, resp, is_error=0;
+
+  buf=buf_alloc(1);
+  if (!buf) {
+    c_close(ssl);
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+  rc = krb5_init_context(&ctx);
+  if (rc) {
+    prtmsg("krb5_init_context failed (%d)", rc);
+    goto out;
+  } 
+  kt = get_keytab(ctx, keytab);
+  if (!kt)
+    goto out;  
+
+  buf_setlength(buf, 0);
+  resp = sendrcv(ssl, OP_GETKEYS, buf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(buf);
+    goto out;
+  }
+  if (resp == RESP_FATAL) {
+    prt_err_reply(buf);
+    c_close(ssl);
+    exit(1);
+  }
+  if (resp != RESP_KEYS) {
+    prtmsg("Unexpected reply type %d from server", resp);
+    goto out;
+  }
+  is_error = process_keys(ctx, kt, buf, g_complete, ssl);
+  
+
+ out:
+  buf_free(buf);
   if (kt)
     krb5_kt_close(ctx, kt);
-  if (ctx) {
-    if (ent.principal)
-      krb5_free_principal(ctx, ent.principal);
+  if (ctx)
     krb5_free_context(ctx);
-  }
-  if (no_send) {
+  if (is_error) {
     c_close(ssl);
     fatal("Exiting due to previous errors");
   }
@@ -753,7 +829,7 @@ void c_abort(SSL *ssl, char *princ) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
-  resp = sendrcv(ssl, OP_STATUS, buf);
+  resp = sendrcv(ssl, OP_ABORTREQ, buf);
   if (resp == RESP_ERR) {
     prt_err_reply(buf);
     goto out;
@@ -802,5 +878,102 @@ void c_finalize(SSL *ssl, char *princ) {
     prtmsg("Unexpected reply type %d from server", resp);
   }
  out:
+  buf_free(buf);
+}
+
+static int count_complete(void *vctx, char *principal, int kvno)
+{
+  int *done=vctx;
+  (*done)++;
+  return 0;
+}
+
+void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab) 
+{
+  mb_t buf;
+  unsigned int resp, m, l;
+  int done, rc;
+  krb5_context ctx;
+  krb5_keytab kt;
+  char *principal=NULL;
+  
+  
+  buf = buf_alloc(8 + strlen(princ));
+  if (!buf) {
+    c_close(ssl);
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+
+  rc = krb5_init_context(&ctx);
+  if (rc) {
+    prtmsg("krb5_init_context failed (%d)", rc);
+    buf_free(buf);
+    return;
+  } 
+  kt = get_keytab(ctx, keytab);
+  if (!kt)
+    goto out;
+
+  if (buf_setlength(buf, 8 + strlen(princ)) ||
+      buf_putint(buf, strlen(princ)) ||
+      buf_putdata(buf, princ, strlen(princ)) ||
+      buf_putint(buf, flag)) {
+    c_close(ssl);
+    fatal("Cannot extend buffer: %s", strerror(errno));
+  } 
+  resp = sendrcv(ssl, OP_SIMPLEKEY, buf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(buf);
+    goto out;
+  }
+  if (resp == RESP_FATAL) {
+    prt_err_reply(buf);
+    c_close(ssl);
+    exit(1);
+  }
+  if (resp != RESP_KEYS) {
+    prtmsg("Unexpected reply type %d from server", resp);
+    goto out;
+  }
+
+  if (buf_getint(buf, &m)) {
+    prtmsg("Server sent malformed reply");
+    goto out;
+  }
+  if (m != 1) {
+    prtmsg("Too many keys (%d, not 1) in reply", m);
+    goto out;
+  }
+  
+  if (buf_getint(buf, &l)) {
+    prtmsg("Server sent malformed reply");
+    goto out;
+  } 
+  principal = realloc(principal, l+1);
+  if (!principal) {
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+  if (buf_getdata(buf, principal, l)) {
+    prtmsg("Server sent malformed reply");
+    goto out;
+  } 
+  principal[l]=0;
+  if (strcmp(princ, principal)) {
+    prtmsg("Server response was for principal %s, not %s", principal, princ);
+    goto out;
+  }
+  reset_cursor(buf);
+  done=0;
+  if (process_keys(ctx, kt, buf, count_complete, &done))
+    goto out;
+  if (done == 0)
+    goto out;
+  c_finalize(ssl, princ);
+ out:
+  if (kt)
+    krb5_kt_close(ctx, kt);
+  if (ctx)
+    krb5_free_context(ctx);
+  free(principal);
   buf_free(buf);
 }

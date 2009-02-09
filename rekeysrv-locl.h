@@ -66,6 +66,7 @@ SSL *do_ssl_accept(int s);
 #ifdef SESS_PRIVATE
 struct rekey_session {
   int initialized;
+  int state;
   SSL *ssl;
   krb5_context kctx;
   gss_ctx_id_t gctx;
@@ -79,6 +80,9 @@ struct rekey_session {
   int is_host;
   sqlite3 *dbh;
 };
+#define REKEY_SESSION_LISTENING 0
+#define REKEY_SESSION_SENDING 1
+#define REKEY_SESSION_IDLE 2
 #else
 struct rekey_session;
 #endif
@@ -86,13 +90,16 @@ struct rekey_session;
 struct gss_OID_desc_struct;
 struct gss_buffer_desc_struct;
 struct sockaddr;
+struct mem_buffer;
 
 void child_cleanup(void) ;
 void ssl_startup(void);
 void ssl_cleanup(void);
 void net_startup(void);
 void run_session(int);
-void do_finalize(struct rekey_session *);
+void sess_finalize(struct rekey_session *);
+void sess_send(struct rekey_session *, int, struct mem_buffer *);
+int sess_recv(struct rekey_session *, struct mem_buffer *);
 void send_error(struct rekey_session *, int errcode, char *msg);
 void send_fatal(struct rekey_session *, int errcode, char *msg);
 void send_gss_error(struct rekey_session *, struct gss_OID_desc_struct *,

@@ -83,9 +83,11 @@ void vprtmsg(const char *msg, va_list ap) {
 #endif
 }
 
-void do_finalize(struct rekey_session *sess) 
+void sess_finalize(struct rekey_session *sess) 
 {
   OM_uint32 min;
+  if (sess->state == REKEY_SESSION_SENDING)
+    prtmsg("warning: session closed before reply sent");
   if (sess->ssl) {
     SSL_shutdown(sess->ssl);
     SSL_free(sess->ssl);
@@ -106,6 +108,32 @@ void do_finalize(struct rekey_session *sess)
   memset(&sess, 0, sizeof(sess));
 }
 
+void sess_send(struct rekey_session *sess, int opcode, mb_t buf) 
+{
+  if (sess->state != REKEY_SESSION_SENDING) {
+    prtmsg("Cannot send message (of type %d) while in state %d\n", opcode,
+           sess->state);
+    return;
+  }
+  do_send(sess->ssl, opcode, buf);
+  sess->state = REKEY_SESSION_IDLE;
+}
+
+
+int sess_recv(struct rekey_session *sess, mb_t buf) 
+{
+  int ret;
+  if (sess->state != REKEY_SESSION_LISTENING) {
+    prtmsg("Cannot read from session while in state %d\n",
+           sess->state);
+    return -1;
+  }
+  ret = do_recv(sess->ssl, buf);
+  if (ret > 0)
+    sess->state = REKEY_SESSION_SENDING;
+  return ret;
+}
+
 
 void send_error(struct rekey_session *sess, int errcode, char *msg) 
 {
@@ -119,7 +147,7 @@ void send_error(struct rekey_session *sess, int errcode, char *msg)
       buf_putint(msgbuf, strlen(msg)) ||
       buf_putdata(msgbuf, msg, strlen(msg)+1))
     return;
-  do_send(sess->ssl, RESP_ERR, msgbuf);
+  sess_send(sess, RESP_ERR, msgbuf);
   buf_free(msgbuf);
 }
 
@@ -135,9 +163,9 @@ void send_fatal(struct rekey_session *sess, int errcode, char *msg)
       buf_putint(msgbuf, strlen(msg)) ||
       buf_putdata(msgbuf, msg, strlen(msg)+1))
     return;
-  do_send(sess->ssl, RESP_FATAL, msgbuf);
+  sess_send(sess, RESP_FATAL, msgbuf);
   buf_free(msgbuf);
-  do_finalize(sess);
+  sess_finalize(sess);
 }
 
 static void send_gss_error_cb(void *rock, gss_buffer_t status_string) 
@@ -177,7 +205,7 @@ void send_gss_error(struct rekey_session *sess, gss_OID mech, int errmaj, int er
     buf_free(msgbuf);
     return;
   }
-  do_send(sess->ssl, RESP_ERR, msgbuf);
+  sess_send(sess, RESP_ERR, msgbuf);
   buf_free(msgbuf);
 }
 
@@ -203,7 +231,7 @@ void send_gss_token(struct rekey_session *sess, int opcode,
     fatal("internal error: cannot pack authentication structure");
   }
     
-  do_send(sess->ssl, RESP_AUTH, auth);
+  sess_send(sess, RESP_AUTH, auth);
   buf_free(auth);
 }
 

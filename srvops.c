@@ -105,6 +105,7 @@ static krb5_enctype future_enctypes[] = {
 #define cur_enctypes future_enctypes
 #endif
 
+/* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {
   char *realm;
@@ -175,6 +176,10 @@ static void check_authz(struct rekey_session *sess)
 #endif
 }
 
+
+/* check that the target principal is valid (in the correct realm, and
+   any other checks we choose to implement (in testing, this includes
+   restricting the first principal component to a specific string)) */
 #define LIMIT_TARGET "test"
 
 static int check_target(struct rekey_session *sess, krb5_principal target) 
@@ -238,280 +243,50 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
 #endif
   return ret;
 }
-  
 
-static void s_auth(struct rekey_session *sess, mb_t buf) {
-  OM_uint32 maj, min, tmin, rflag;
-  gss_buffer_desc in, out, outname;
-  unsigned int f;
-  int gss_more_accept=0, gss_more_init=0;
-  unsigned char *p;
-  krb5_error_code rc;
-  
-  if (sess->authstate) {
-    send_error(sess, ERR_BADOP, "Authentication already complete");
-    return;
-  }
-  if (krb5_init_context(&sess->kctx)) {
-      
-      send_fatal(sess, ERR_OTHER, "Internal kerberos error on server");
-      fatal("Authentication failed: krb5_init_context failed");
-  }  
-  reset_cursor(buf);
-  if (buf_getint(buf, &f))
-    goto badpkt;
-  if (f & AUTHFLAG_MORE)
-    gss_more_init = 1;
-  if (buf_getint(buf, (unsigned int *)&in.length))
-    goto badpkt;
-  in.value = buf->cursor;
-  memset(&out, 0, sizeof(out));
-  maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
-			       &in, GSS_C_NO_CHANNEL_BINDINGS,
-			       &sess->name, &sess->mech, &out, &rflag, NULL,
-			       NULL);
-  if (GSS_ERROR(maj)) {
-    if (out.length) {
-      send_gss_token(sess, RESP_AUTHERR, 0, &out);
-      gss_release_buffer(&tmin, &out);
-      prt_gss_error(sess->mech, maj, min);
-    } else {
-      send_gss_error(sess, sess->mech, maj, min);
-    }
-    if (sess->gctx != GSS_C_NO_CONTEXT)
-      gss_delete_sec_context(&tmin, &sess->gctx, GSS_C_NO_BUFFER);
-    return;
-  }
-  if (maj & GSS_S_CONTINUE_NEEDED) {
-    gss_more_accept=1;
-    if (out.length == 0) {
-      send_fatal(sess, ERR_OTHER, "Internal gss error on server");
-      fatal("Authentication failed: not sending a gss token but expects a reply");
-    }
-  }
-
-  if (out.length && gss_more_init == 0) {
-    send_fatal(sess, ERR_OTHER, "Internal gss error on server");
-    fatal("Authentication failed: would send a gss token when remote does not expect one");
-  }
-
-
-  if (gss_more_accept == 0) {
-    unsigned short oidl;
-    if ((~rflag) & (GSS_C_MUTUAL_FLAG|GSS_C_INTEG_FLAG)) {
-      send_fatal(sess, ERR_AUTHN, "GSSAPI mechanism does not provide data integrity services");
-      fatal("GSSAPI mechanism does not provide data integrity services");
-    }   
-    maj = gss_export_name(&min, sess->name, &outname);
-    if (GSS_ERROR(maj)) {
-      prt_gss_error(sess->mech, maj, min);
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (cannot export name from GSSAPI)");
-      fatal("Cannot parse authenticated name (cannot export name from GSSAPI)");
-    }
-    /* check for minimum length and correct token header */
-    if (outname.length < 6 || memcmp(outname.value, "\x04\x01", 2)) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
-      fatal("Cannot parse authenticated name (it is not a valid exported name)");
-    }
-    p = outname.value;
-    p += 2;
-    /* extract oid wrapper length */
-    oidl = (p[0] << 8) + p[1];
-    p+=2;
-    /* check for oid length, valid oid tag, and correct oid length. 
-       (this isn't really general - a sufficiently long oid would break this,
-       even if valid) */
-    if (outname.length < 4 + oidl || *p++ != 0x6 || *p >= 0x80 || *p++ != oidl - 2 ) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
-      fatal("Cannot parse authenticated name (it is not a valid exported name)");
-    }
-    oidl -= 2;
-    /* check for the krb5 mechanism oid */
-    if (gss_mech_krb5->length != oidl || 
-	memcmp(p, gss_mech_krb5->elements, oidl)) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a kerberos name)");
-      fatal("Cannot parse authenticated name (it is not a kerberos name)");
-    }
-    /* skip oid */
-    p+=oidl;
-    if (buf_setlength(buf, outname.length) ||
-        buf_putdata(buf, outname.value, outname.length)) {
-      send_fatal(sess, ERR_OTHER, "Internal error on server");
-      fatal("internal error: cannot copy name structure");
-    }      
-    /* skip over the header we already parsed */
-    set_cursor(buf, p - (unsigned char *)outname.value);
-    gss_release_buffer(&tmin, &outname);
-    if (buf_getint(buf, &f)) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      fatal("Cannot parse authenticated name (buffer is too short)");
-    }
-    sess->plain_name=malloc(f + 1);
-    if (!sess->plain_name) {
-      send_fatal(sess, ERR_OTHER, "Internal error on server");
-      fatal("Cannot allocate memory");
-    }
-    if (buf_getdata(buf, sess->plain_name, f)) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      fatal("Cannot parse authenticated name (buffer is broken [name length=%d, input buffer size=%d])", f, outname.length - (p - (unsigned char *)outname.value) - 4);
-    }
-    sess->plain_name[f]=0;
-    if ((rc=krb5_parse_name(sess->kctx, sess->plain_name, &sess->princ))) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      fatal("Cannot parse authenticated name (kerberos error %s)", krb5_get_err_text(sess->kctx, rc));
-    }
-    sess->authstate=1;
-    check_authz(sess);
-    prtmsg("Authenticated as %s (host? %d admin? %d)", sess->plain_name,
-           sess->is_host, sess->is_admin);
-  }
-  if (out.length) {
-    send_gss_token(sess, RESP_AUTH, gss_more_accept, &out);
-    gss_release_buffer(&tmin, &out);
-  } else {
-    do_send(sess->ssl, RESP_OK, NULL);
-  }
-  return;
- badpkt:
-  send_error(sess, ERR_BADREQ, "Packet was too short for opcode");
-  return;
-}
-static void s_autherr(struct rekey_session *sess, mb_t buf) 
+/* lookup a principal in the local database, and return its id and kvno if
+   requested */
+static int find_principal(struct rekey_session *sess, char *principal, sqlite_int64 *princid, int *kvno) 
 {
-  OM_uint32 maj, min;
-  gss_buffer_desc in, out;
-  unsigned int f;
-
-  if (sess->authstate) {
-    send_error(sess, ERR_BADOP, "Authentication already complete");
-    return;
+  sqlite3_stmt *getprinc=NULL;  
+  int rc, match;
+  
+  rc = sqlite3_prepare_v2(sess->dbh, 
+                          "SELECT id, kvno FROM principals WHERE name=?",
+                          -1, &getprinc, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(getprinc, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(getprinc)) {
+    if (princid)
+      *princid = sqlite3_column_int64(getprinc, 0);
+    if (kvno)
+      *kvno = sqlite3_column_int(getprinc, 1);
+    if (princid && *princid == 0)
+      goto dberr;
+    match++;
   }
   
-  if (buf_getint(buf, &f))
-    goto badpkt;
-  if (buf_getint(buf, (unsigned int *)&in.length))
-    goto badpkt;
-  in.value = buf->cursor;
-  memset(&out, 0, sizeof(out));
-  maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
-			       &in, GSS_C_NO_CHANNEL_BINDINGS,
-			       &sess->name, &sess->mech, &out, NULL, NULL,
-			       NULL);
-  if (GSS_ERROR(maj)) {
-    prt_gss_error(sess->mech, maj, min);
-  } else {
-    prtmsg("got autherr packet from client, but no GSSAPI error inside");
-  }
-  if (out.length)
-    gss_release_buffer(&min, &out);
-  if (sess->gctx)
-    gss_delete_sec_context(&min, &sess->gctx, GSS_C_NO_BUFFER);
+  rc = sqlite3_finalize(getprinc);
+  getprinc=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  goto freeall;
   
-  do_send(sess->ssl, RESP_OK, NULL);
-  do_finalize(sess);
-  exit(1);
- badpkt:
-  send_error(sess, ERR_BADREQ, "Packet was too short for opcode");
-  return;
+ dberr:
+  match = -1;
+ freeall:
+  if (getprinc)
+    sqlite3_finalize(getprinc);  
+  return match;
 }
 
-static void s_authchan(struct rekey_session *sess, mb_t buf) 
-{
-  OM_uint32 maj, min, qop;
-  gss_buffer_desc in, out;
-  size_t flen;
-  unsigned char *p;
-
-  if (sess->authstate == 0) {
-    send_error(sess, ERR_AUTHZ, "Operation not allowed on unauthenticated connection");
-    return;
-  }
-  if (sess->authstate == 2) {
-    send_error(sess, ERR_BADOP, "Authentication already complete");
-    return;
-  }
-
- flen = SSL_get_finished(sess->ssl, NULL, 0);
- if (flen == 0) {
-   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   fatal("Cannot authenticate: ssl finished message not available");
- }    
- in.length = 2 * flen;
- in.value = malloc(in.length);
- if (in.value == NULL) {
-   send_fatal(sess, ERR_AUTHN, "Internal error; out of memory");
-   fatal("Cannot authenticate: memory allocation failed: %s",
-         strerror(errno));
- }
- p=in.value;
- if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
-   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
- }    
- p+=flen;
- if (flen != SSL_get_finished(sess->ssl, p, flen)) {
-   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
- }
-
- out.length = buf->length;
- out.value = buf->value;
- 
- maj = gss_verify_mic(&min, sess->gctx, &in, &out, &qop);
- if (maj == GSS_S_BAD_SIG) {
-   send_fatal(sess, ERR_AUTHN, "Channel binding verification failed");
-   fatal("channel binding verification failed (signature does not match)");
- }
- if (GSS_ERROR(maj)) {
-   send_gss_error(sess, sess->mech, maj, min);
-   free(in.value);
-   return;
- }
- 
- p=in.value;
- if (flen != SSL_get_finished(sess->ssl, p, flen)) {
-   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
- }    
- p+=flen;
- if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
-   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
-   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
- }
- memset(&out, 0, sizeof(out));
- maj = gss_get_mic(&min, sess->gctx, GSS_C_QOP_DEFAULT, &in, &out);
- free(in.value);
- if (GSS_ERROR(maj)) {
-   send_gss_error(sess, sess->mech, maj, min);
-   exit(1);
- }
- if (buf_setlength(buf, out.length) ||
-     buf_putdata(buf, out.value, out.length)) {
-    send_fatal(sess, ERR_OTHER, "Internal error on server");
-    fatal("internal error: cannot pack channel binding structure");
- }
- 
- do_send(sess->ssl, RESP_AUTHCHAN, buf);
- gss_release_buffer(&min, &out);
- sess->authstate = 2;
-#if 0
- {
-   SSL_SESSION *ssls = SSL_get_session(sess->ssl);
-   char sslid[2 * SSL_MAX_SSL_SESSION_ID_LENGTH + 4], *p;
-   int i;
-   sprintf(sslid, "0x");
-   p=&sslid[2];
-   for (i=0; i < ssls->session_id_length; i++) {
-     sprintf(p, "%02x", ssls->session_id[i]);
-     p+=2;
-   }
-   prtmsg("Authentication bound to SSL %s", sslid);
- }
-#else
- prtmsg("Channel bindings sucessfully verified");
-#endif
-}
-
+/* create a principal in the local database.
+   gets the new kvno by looking up the old one in the kdb and incrementing it.
+   Optionally creates the kdb entry if it does not exist */
 static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal, 
                                     krb5_principal target, int create, int *kvnop) 
 {
@@ -523,22 +298,11 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
   char *realm=NULL;
   kadm5_principal_ent_rec ke;
   sqlite_int64 princid=0;
-  
-  rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT id from principals where name=?",
-                          -1, &ins, NULL);
-  if (rc != SQLITE_OK)
+
+  match = find_principal(sess, principal, NULL, NULL);
+  if (match < 0)
     goto dberr;
-  rc = sqlite3_bind_text(ins, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(ins))
-    match++;
-  rc = sqlite3_finalize(ins);
-  ins=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
+
   if (match) {
     send_error(sess, ERR_OTHER, "Rekey for this principal already in progress");
     goto freeall;
@@ -604,6 +368,7 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
   princid  = sqlite3_last_insert_rowid(sess->dbh);
   if (kvnop)
     *kvnop=kvno;
+  goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
@@ -628,9 +393,7 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
   return princid;
 }
 
-  
-
-
+/* generates a keyset and places it in the local database */
 static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int desonly) 
 {
   krb5_enctype *pEtype;
@@ -684,225 +447,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int d
   return 1;
 }
 
-static void s_newreq(struct rekey_session *sess, mb_t buf) 
-{
-  char *principal=NULL;
-  char **hostnames=NULL;
-  int desonly;
-  unsigned int l, n, flag;
-  int i, rc;
-  sqlite3_stmt *ins=NULL;
-  int dbaction=0;
-  sqlite_int64 princid;
-  krb5_principal target=NULL;
-  
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
-  }
-  if (buf_getint(buf, &l))
-    goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
-  rc = krb5_parse_name(sess->kctx, principal, &target);
-  if (rc) {
-    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
-    send_error(sess, ERR_BADREQ, "Bad principal name");
-    goto freeall;
-  }
-
-  if (buf_getint(buf, &flag))
-    goto badpkt;
-  if (flag != 0 && flag != REQFLAG_DESONLY) {
-    send_error(sess, ERR_BADREQ, "Invalid flags specified");
-    goto freeall;
-  }
-  desonly=0;
-  if (flag == REQFLAG_DESONLY)
-    desonly=1;
-  if (buf_getint(buf, &n))
-    goto badpkt;
-  hostnames=calloc(n, sizeof(char *));
-  if (!hostnames)
-    goto memerr;
-  for (i=0; i < n; i++) {
-    if (buf_getint(buf, &l))
-      goto badpkt;
-    hostnames[i] = malloc(l + 1);
-    if (!hostnames[i])
-      goto memerr;
-    if (buf_getdata(buf, hostnames[i], l))
-      goto badpkt;
-    hostnames[i][l]=0;
-  }
-  if (check_target(sess, target))
-    goto freeall;
-
-  if (sql_init(sess))
-    goto dberrnomsg;
-
-  if (sql_begin_trans(sess))
-    goto dberrnomsg;
-  dbaction=-1;
-  
-  princid = setup_principal(sess, principal, target, 0, NULL);
-  if (princid == 0)
-    goto freeall;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "INSERT INTO acl (principal, hostname) VALUES (?, ?);",
-			  -1, &ins, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  for (i=0; i < n; i++) {  
-    rc = sqlite3_bind_int64(ins, 1, princid);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    rc = sqlite3_bind_text(ins, 2, hostnames[i], 
-                           strlen(hostnames[i]), SQLITE_STATIC);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(ins);    
-    rc = sqlite3_reset(ins);
-    if (rc != SQLITE_OK)
-      goto dberr;
-  }
-  rc = sqlite3_finalize(ins);
-  ins=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-
-  if (generate_keys(sess, princid, desonly))
-    goto freeall;
-  
-  do_send(sess->ssl, RESP_OK, NULL);
-  dbaction=1;
-  goto freeall;
- dberr:
-  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
- dberrnomsg:
-  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
-  goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
-  goto freeall;
- badpkt:
-  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
- freeall:
-  if (ins)
-    sqlite3_finalize(ins);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
-    sql_rollback_trans(sess);
-
-  if (target)
-    krb5_free_principal(sess->kctx, target);
-  free(principal);
-  if (hostnames) {
-    for (i=0; i < n; i++) {
-      free(hostnames[i]);
-    }
-    free(hostnames);
-  }
-}
-
-static void s_status(struct rekey_session *sess, mb_t buf)
-{
-  sqlite3_stmt *st=NULL;
-  char *principal = NULL;
-  const char *hostname=NULL;
-  unsigned int f, l, n;
-  int rc;
-  size_t curlen;
-
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
-  }
-
-  if (buf_getint(buf, &l))
-    goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
-
-  if (sql_init(sess))
-    goto dberrnomsg;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT hostname,completed,attempted FROM principals,acl WHERE name=? AND principal = id",
-                          -1, &st, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(st, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  n=0;
-  curlen=8;
-  
-  while (SQLITE_ROW == sqlite3_step(st)) {
-    hostname = (const char *)sqlite3_column_text(st, 0);
-    l = sqlite3_column_bytes(st, 0);
-    if (hostname == NULL || l == 0)
-      goto interr;
-    if (!strcmp(hostname, "0"))
-      goto dberr;
-    f = 0;
-    if (sqlite3_column_int(st, 1))
-      f=STATUSFLAG_COMPLETE;
-    if (sqlite3_column_int(st, 2))
-      f=STATUSFLAG_ATTEMPTED;
-    if (buf_setlength(buf, curlen + 4 + 4 + l))
-      goto memerr;
-    set_cursor(buf, curlen);
-    if (buf_putint(buf, f) ||
-        buf_putint(buf, l) ||
-        buf_putdata(buf, hostname, l))
-      goto interr;
-    n++;
-    curlen = curlen + 4 + 4 + l;
-  }
-  
-  rc = sqlite3_finalize(st);
-  st=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
-  if (n == 0) {
-    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
-  } else {
-    reset_cursor(buf);
-    buf_putint(buf, 0);
-    buf_putint(buf, n);
-    do_send(sess->ssl, RESP_STATUS, buf);
-  }
-  goto freeall;
- dberr:
-  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
- dberrnomsg:
-  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
-  goto freeall;
- interr:
-  send_error(sess, ERR_OTHER, "Server internal error");
-  goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
-  goto freeall;
- badpkt:
-  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
- freeall:
-  if (st)
-    sqlite3_finalize(st);
-  free(principal);
-}
-
+/* Adds a keyset to a partially initialized KEYS response */
 static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int kvno, mb_t buf, size_t *startlen) 
 {
   int rc;
@@ -939,7 +484,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
 	goto interr;
       curlen = curlen + 8 + l;
       if (enctype == ENCTYPE_DES_CBC_CRC) {
-        if (buf_setlength(buf, curlen + 16 + l)) /* enctype, key length */
+        if (buf_setlength(buf, curlen + 2 *(8 + l))) /* 8 is enctype, key length */
           goto memerr;
         set_cursor(buf, curlen);
         if (buf_putint(buf, ENCTYPE_DES_CBC_MD4) || buf_putint(buf, l) ||
@@ -977,129 +522,8 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
   return 1;
 }
 
-    
-
-static void s_getkeys(struct rekey_session *sess, mb_t buf)
-{
-  int m, rc;
-  size_t l, curlen;
-  sqlite3_stmt *st, *updatt, *updcount;
-  sqlite_int64 principal;
-  const char *pname;
-  int kvno, dbaction=0;
-    
-  if (sess->is_host == 0) {
-    send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
-    return;
-  } 
-  if (sql_init(sess))
-    goto dberrnomsg;
-
-  if (sql_begin_trans(sess))
-    goto dberrnomsg;
-  dbaction=-1;
-  
-  rc = sqlite3_prepare(sess->dbh,"SELECT id, name, kvno FROM principals, acl WHERE acl.hostname=? AND acl.principal=principals.id",
-                       -1, &st, NULL);
-
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(st, 1, sess->hostname, 
-                         strlen(sess->hostname), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE acl SET attempted = 1 WHERE principal = ? AND hostname = ?;",
-			  -1, &updatt, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_text(updatt, 2, sess->hostname, 
-                         strlen(sess->hostname), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-
-  rc = sqlite3_prepare_v2(sess->dbh, 
-			  "UPDATE principals SET downloadcount = downloadcount +1 WHERE id = ?;",
-			  -1, &updcount, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-
-  m=0;
-  curlen=4;
-  
-  while (SQLITE_ROW == sqlite3_step(st)) {
-    principal=sqlite3_column_int64(st, 0);
-    pname = (const char *)sqlite3_column_text(st, 1);
-    kvno = sqlite3_column_int(st, 2);
-    l = sqlite3_column_bytes(st, 1);
-    if (pname == NULL || l == 0)
-      goto interr;
-    if (!strcmp(pname, "0") || 
-	principal == 0)
-      goto dberr;
-    if (buf_setlength(buf, curlen + 8 + l)) /* name length, kvno */
-      goto memerr;
-    set_cursor(buf, curlen);
-    if (buf_putint(buf, l) || 
-	buf_putdata(buf, pname, l) ||
-	buf_putint(buf, kvno))
-      goto interr;
-    if (add_keys_one(sess, principal, kvno, buf, &curlen))
-      goto freeall;
-
-    m++;
-
-    rc = sqlite3_bind_int64(updatt, 1, principal);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(updatt);    
-    rc = sqlite3_reset(updatt);
-    if (rc != SQLITE_OK)
-      goto dberr;
-
-    rc = sqlite3_bind_int64(updcount, 1, principal);
-    if (rc != SQLITE_OK)
-      goto dberr;
-    sqlite3_step(updcount);    
-    rc = sqlite3_reset(updcount);
-    if (rc != SQLITE_OK)
-      goto dberr;
-  }
-  if (m == 0) {
-    send_error(sess, ERR_NOKEYS, "No keys available for this host");
-  } else {
-    set_cursor(buf, 0);
-    if (buf_putint(buf, m))
-      goto interr;
-    do_send(sess->ssl, RESP_KEYS, buf);
-    dbaction=1;
-  }    
-  
-  goto freeall;
- dberr:
-  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
- dberrnomsg:
-  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
-  goto freeall;
- interr:
-  send_error(sess, ERR_OTHER, "Server internal error");
-  goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
- freeall:
-  if (st)
-    sqlite3_finalize(st);
-  if (updatt)
-    sqlite3_finalize(updatt);
-  if (updcount)
-    sqlite3_finalize(updcount);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
-    sql_rollback_trans(sess);
-}
-
+/* Set up the object used by the kadmin api for storing keys. This
+   differs between mit and heimdal. */
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
 static int prepare_kadm_key(krb5_key_data *k, int kvno, int enctype, int keylen,
 		   const unsigned char *keydata) {
@@ -1126,6 +550,7 @@ static int prepare_kadm_key(krb5_keyblock *k, int kvno, int enctype, int keylen,
 }
 #endif    
 
+/* remove a principal and all dependent objects from the local database */
 static int do_purge(struct rekey_session *sess, sqlite_int64 princid) 
 {
   int rc;
@@ -1166,6 +591,9 @@ static int do_purge(struct rekey_session *sess, sqlite_int64 princid)
   return rc;
 }
 
+/* attempt to update the kdb, given a request that has been commited
+   by all its clients. If it fails, a message is stored in the database
+   to help debugging */
 static int do_finalize_req(struct rekey_session *sess, int no_send, 
 			   char *principal, sqlite_int64 princid, 
 			   krb5_principal target, int kvno) {
@@ -1369,15 +797,692 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
   return ret;
 }
 
+/* Check to see if a principal's rekey is ready to be finalized (that is, that 
+   there are no clients that have not commited it) */
+static int check_uncommited(struct rekey_session *sess, sqlite_int64 princid) 
+{
+  sqlite3_stmt *checkcomp;
+  int rc, match;
+  
+  rc = sqlite3_prepare_v2(sess->dbh,
+			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
+			  -1, &checkcomp, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_int64(checkcomp, 1, princid);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  match=0;
+  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
+    match++;
+  }
+  rc = sqlite3_finalize(checkcomp);
+  checkcomp=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  goto freeall;
+ dberr:
+  match = -1;
+ freeall:
+  if (checkcomp)
+    sqlite3_finalize(checkcomp);
+  return match;
+}
 
+/* Process an AUTH request containing a gss context token. 
+   Returns an AUTH or OK response if successful. */
+static void s_auth(struct rekey_session *sess, mb_t buf) {
+  OM_uint32 maj, min, tmin, rflag;
+  gss_buffer_desc in, out, outname;
+  unsigned int f;
+  int gss_more_accept=0, gss_more_init=0;
+  unsigned char *p;
+  krb5_error_code rc;
+  
+  if (sess->authstate) {
+    send_error(sess, ERR_BADOP, "Authentication already complete");
+    return;
+  }
+  if (krb5_init_context(&sess->kctx)) {
+      
+      send_fatal(sess, ERR_OTHER, "Internal kerberos error on server");
+      fatal("Authentication failed: krb5_init_context failed");
+  }  
+  reset_cursor(buf);
+  if (buf_getint(buf, &f))
+    goto badpkt;
+  if (f & AUTHFLAG_MORE)
+    gss_more_init = 1;
+  if (buf_getint(buf, (unsigned int *)&in.length))
+    goto badpkt;
+  in.value = buf->cursor;
+  memset(&out, 0, sizeof(out));
+  maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
+			       &in, GSS_C_NO_CHANNEL_BINDINGS,
+			       &sess->name, &sess->mech, &out, &rflag, NULL,
+			       NULL);
+  if (GSS_ERROR(maj)) {
+    if (out.length) {
+      send_gss_token(sess, RESP_AUTHERR, 0, &out);
+      gss_release_buffer(&tmin, &out);
+      prt_gss_error(sess->mech, maj, min);
+    } else {
+      send_gss_error(sess, sess->mech, maj, min);
+    }
+    if (sess->gctx != GSS_C_NO_CONTEXT)
+      gss_delete_sec_context(&tmin, &sess->gctx, GSS_C_NO_BUFFER);
+    return;
+  }
+  if (maj & GSS_S_CONTINUE_NEEDED) {
+    gss_more_accept=1;
+    if (out.length == 0) {
+      send_fatal(sess, ERR_OTHER, "Internal gss error on server");
+      fatal("Authentication failed: not sending a gss token but expects a reply");
+    }
+  }
+
+  if (out.length && gss_more_init == 0) {
+    send_fatal(sess, ERR_OTHER, "Internal gss error on server");
+    fatal("Authentication failed: would send a gss token when remote does not expect one");
+  }
+
+
+  if (gss_more_accept == 0) {
+    unsigned short oidl;
+    if ((~rflag) & (GSS_C_MUTUAL_FLAG|GSS_C_INTEG_FLAG)) {
+      send_fatal(sess, ERR_AUTHN, "GSSAPI mechanism does not provide data integrity services");
+      fatal("GSSAPI mechanism does not provide data integrity services");
+    }   
+    maj = gss_export_name(&min, sess->name, &outname);
+    if (GSS_ERROR(maj)) {
+      prt_gss_error(sess->mech, maj, min);
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (cannot export name from GSSAPI)");
+      fatal("Cannot parse authenticated name (cannot export name from GSSAPI)");
+    }
+    /* check for minimum length and correct token header */
+    if (outname.length < 6 || memcmp(outname.value, "\x04\x01", 2)) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
+      fatal("Cannot parse authenticated name (it is not a valid exported name)");
+    }
+    p = outname.value;
+    p += 2;
+    /* extract oid wrapper length */
+    oidl = (p[0] << 8) + p[1];
+    p+=2;
+    /* check for oid length, valid oid tag, and correct oid length. 
+       (this isn't really general - a sufficiently long oid would break this,
+       even if valid) */
+    if (outname.length < 4 + oidl || *p++ != 0x6 || *p >= 0x80 || *p++ != oidl - 2 ) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
+      fatal("Cannot parse authenticated name (it is not a valid exported name)");
+    }
+    oidl -= 2;
+    /* check for the krb5 mechanism oid */
+    if (gss_mech_krb5->length != oidl || 
+	memcmp(p, gss_mech_krb5->elements, oidl)) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a kerberos name)");
+      fatal("Cannot parse authenticated name (it is not a kerberos name)");
+    }
+    /* skip oid */
+    p+=oidl;
+    if (buf_setlength(buf, outname.length) ||
+        buf_putdata(buf, outname.value, outname.length)) {
+      send_fatal(sess, ERR_OTHER, "Internal error on server");
+      fatal("internal error: cannot copy name structure");
+    }      
+    /* skip over the header we already parsed */
+    set_cursor(buf, p - (unsigned char *)outname.value);
+    gss_release_buffer(&tmin, &outname);
+    if (buf_getint(buf, &f)) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
+      fatal("Cannot parse authenticated name (buffer is too short)");
+    }
+    sess->plain_name=malloc(f + 1);
+    if (!sess->plain_name) {
+      send_fatal(sess, ERR_OTHER, "Internal error on server");
+      fatal("Cannot allocate memory");
+    }
+    if (buf_getdata(buf, sess->plain_name, f)) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
+      fatal("Cannot parse authenticated name (buffer is broken [name length=%d, input buffer size=%d])", f, outname.length - (p - (unsigned char *)outname.value) - 4);
+    }
+    sess->plain_name[f]=0;
+    if ((rc=krb5_parse_name(sess->kctx, sess->plain_name, &sess->princ))) {
+      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
+      fatal("Cannot parse authenticated name (kerberos error %s)", krb5_get_err_text(sess->kctx, rc));
+    }
+    sess->authstate=1;
+    check_authz(sess);
+    prtmsg("Authenticated as %s (host? %d admin? %d)", sess->plain_name,
+           sess->is_host, sess->is_admin);
+  }
+  if (out.length) {
+    send_gss_token(sess, RESP_AUTH, gss_more_accept, &out);
+    gss_release_buffer(&tmin, &out);
+  } else {
+    sess_send(sess, RESP_OK, NULL);
+  }
+  return;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was too short for opcode");
+  return;
+}
+
+/* process an AUTHERR request. logs gss error information from client and
+   terminates channel */
+static void s_autherr(struct rekey_session *sess, mb_t buf) 
+{
+  OM_uint32 maj, min;
+  gss_buffer_desc in, out;
+  unsigned int f;
+
+  if (sess->authstate) {
+    send_error(sess, ERR_BADOP, "Authentication already complete");
+    return;
+  }
+  
+  if (buf_getint(buf, &f))
+    goto badpkt;
+  if (buf_getint(buf, (unsigned int *)&in.length))
+    goto badpkt;
+  in.value = buf->cursor;
+  memset(&out, 0, sizeof(out));
+  maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
+			       &in, GSS_C_NO_CHANNEL_BINDINGS,
+			       &sess->name, &sess->mech, &out, NULL, NULL,
+			       NULL);
+  if (GSS_ERROR(maj)) {
+    prt_gss_error(sess->mech, maj, min);
+  } else {
+    prtmsg("got autherr packet from client, but no GSSAPI error inside");
+  }
+  if (out.length)
+    gss_release_buffer(&min, &out);
+  if (sess->gctx)
+    gss_delete_sec_context(&min, &sess->gctx, GSS_C_NO_BUFFER);
+  
+  sess_send(sess, RESP_OK, NULL);
+  sess_finalize(sess);
+  exit(1);
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was too short for opcode");
+  return;
+}
+
+/* process and AUTHCHAN request containing authenticated channel bindings.
+   produces an AUTHCHAN response if successful */
+static void s_authchan(struct rekey_session *sess, mb_t buf) 
+{
+  OM_uint32 maj, min, qop;
+  gss_buffer_desc in, out;
+  size_t flen;
+  unsigned char *p;
+
+  if (sess->authstate == 0) {
+    send_error(sess, ERR_AUTHZ, "Operation not allowed on unauthenticated connection");
+    return;
+  }
+  if (sess->authstate == 2) {
+    send_error(sess, ERR_BADOP, "Authentication already complete");
+    return;
+  }
+
+ flen = SSL_get_finished(sess->ssl, NULL, 0);
+ if (flen == 0) {
+   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
+   fatal("Cannot authenticate: ssl finished message not available");
+ }    
+ in.length = 2 * flen;
+ in.value = malloc(in.length);
+ if (in.value == NULL) {
+   send_fatal(sess, ERR_AUTHN, "Internal error; out of memory");
+   fatal("Cannot authenticate: memory allocation failed: %s",
+         strerror(errno));
+ }
+ p=in.value;
+ if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
+   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
+   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
+ }    
+ p+=flen;
+ if (flen != SSL_get_finished(sess->ssl, p, flen)) {
+   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
+   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
+ }
+
+ out.length = buf->length;
+ out.value = buf->value;
+ 
+ maj = gss_verify_mic(&min, sess->gctx, &in, &out, &qop);
+ if (maj == GSS_S_BAD_SIG) {
+   send_fatal(sess, ERR_AUTHN, "Channel binding verification failed");
+   fatal("channel binding verification failed (signature does not match)");
+ }
+ if (GSS_ERROR(maj)) {
+   send_gss_error(sess, sess->mech, maj, min);
+   free(in.value);
+   return;
+ }
+ 
+ p=in.value;
+ if (flen != SSL_get_finished(sess->ssl, p, flen)) {
+   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
+   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
+ }    
+ p+=flen;
+ if (flen != SSL_get_peer_finished(sess->ssl, p, flen)) {
+   send_fatal(sess, ERR_AUTHN, "ssl finished message not available");
+   fatal("Cannot authenticate: ssl finished message not available or size changed(!)");
+ }
+ memset(&out, 0, sizeof(out));
+ maj = gss_get_mic(&min, sess->gctx, GSS_C_QOP_DEFAULT, &in, &out);
+ free(in.value);
+ if (GSS_ERROR(maj)) {
+   send_gss_error(sess, sess->mech, maj, min);
+   exit(1);
+ }
+ if (buf_setlength(buf, out.length) ||
+     buf_putdata(buf, out.value, out.length)) {
+    send_fatal(sess, ERR_OTHER, "Internal error on server");
+    fatal("internal error: cannot pack channel binding structure");
+ }
+ 
+ sess_send(sess, RESP_AUTHCHAN, buf);
+ gss_release_buffer(&min, &out);
+ sess->authstate = 2;
+#if 0
+ {
+   SSL_SESSION *ssls = SSL_get_session(sess->ssl);
+   char sslid[2 * SSL_MAX_SSL_SESSION_ID_LENGTH + 4], *p;
+   int i;
+   sprintf(sslid, "0x");
+   p=&sslid[2];
+   for (i=0; i < ssls->session_id_length; i++) {
+     sprintf(p, "%02x", ssls->session_id[i]);
+     p+=2;
+   }
+   prtmsg("Authentication bound to SSL %s", sslid);
+ }
+#else
+ prtmsg("Channel bindings sucessfully verified");
+#endif
+}
+
+/* process a NEWREQ request. Creates a new request and generates keys for it.
+   replies with OK if successful */
+static void s_newreq(struct rekey_session *sess, mb_t buf) 
+{
+  char *principal=NULL, *unp, *new;
+  char **hostnames=NULL;
+  int desonly;
+  unsigned int l, n, flag;
+  int i, rc;
+  sqlite3_stmt *ins=NULL;
+  int dbaction=0;
+  sqlite_int64 princid;
+  krb5_principal target=NULL;
+  
+  if (sess->is_admin == 0) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    return;
+  }
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  rc=krb5_unparse_name(sess->kctx, target, &unp);
+  if (rc) {
+    prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  } 
+  new = strdup(unp);
+#ifdef HAVE_KRB5_FREE_UNPARSED_NAME
+  krb5_free_unparsed_name(ctx, unp);
+#else
+  krb5_xfree(unp);
+#endif
+  if (!new)
+    goto memerr;
+  free(principal);
+  principal=new;
+
+  if (buf_getint(buf, &flag))
+    goto badpkt;
+  if (flag != 0 && flag != REQFLAG_DESONLY) {
+    send_error(sess, ERR_BADREQ, "Invalid flags specified");
+    goto freeall;
+  }
+  desonly=0;
+  if (flag == REQFLAG_DESONLY)
+    desonly=1;
+  if (buf_getint(buf, &n))
+    goto badpkt;
+  hostnames=calloc(n, sizeof(char *));
+  if (!hostnames)
+    goto memerr;
+  for (i=0; i < n; i++) {
+    if (buf_getint(buf, &l))
+      goto badpkt;
+    hostnames[i] = malloc(l + 1);
+    if (!hostnames[i])
+      goto memerr;
+    if (buf_getdata(buf, hostnames[i], l))
+      goto badpkt;
+    hostnames[i][l]=0;
+  }
+  if (check_target(sess, target))
+    goto freeall;
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  if (sql_begin_trans(sess))
+    goto dberrnomsg;
+  dbaction=-1;
+  
+  princid = setup_principal(sess, principal, target, 0, NULL);
+  if (princid == 0)
+    goto freeall;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "INSERT INTO acl (principal, hostname) VALUES (?, ?);",
+			  -1, &ins, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  for (i=0; i < n; i++) {  
+    rc = sqlite3_bind_int64(ins, 1, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_text(ins, 2, hostnames[i], 
+                           strlen(hostnames[i]), SQLITE_STATIC);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(ins);    
+    rc = sqlite3_reset(ins);
+    if (rc != SQLITE_OK)
+      goto dberr;
+  }
+  rc = sqlite3_finalize(ins);
+  ins=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+
+  if (generate_keys(sess, princid, desonly))
+    goto freeall;
+  
+  sess_send(sess, RESP_OK, NULL);
+  dbaction=1;
+  goto freeall;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:
+  if (ins)
+    sqlite3_finalize(ins);
+  if (dbaction > 0)
+    sql_commit_trans(sess);
+  else if (dbaction < 0)
+    sql_rollback_trans(sess);
+
+  if (target)
+    krb5_free_principal(sess->kctx, target);
+  free(principal);
+  if (hostnames) {
+    for (i=0; i < n; i++) {
+      free(hostnames[i]);
+    }
+    free(hostnames);
+  }
+}
+
+/* Process a STATUS request. Dumps the state of a rekey request.
+   returns a STATUS response if successful */ 
+static void s_status(struct rekey_session *sess, mb_t buf)
+{
+  sqlite3_stmt *st=NULL;
+  char *principal = NULL;
+  const char *hostname=NULL;
+  unsigned int f, l, n;
+  int rc;
+  size_t curlen;
+
+  if (sess->is_admin == 0) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    return;
+  }
+
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+                          "SELECT hostname,completed,attempted FROM principals,acl WHERE name=? AND principal = id",
+                          -1, &st, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(st, 1, principal, strlen(principal), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  n=0;
+  curlen=8;
+  
+  while (SQLITE_ROW == sqlite3_step(st)) {
+    hostname = (const char *)sqlite3_column_text(st, 0);
+    l = sqlite3_column_bytes(st, 0);
+    if (hostname == NULL || l == 0)
+      goto interr;
+    if (!strcmp(hostname, "0"))
+      goto dberr;
+    f = 0;
+    if (sqlite3_column_int(st, 1))
+      f=STATUSFLAG_COMPLETE;
+    if (sqlite3_column_int(st, 2))
+      f=STATUSFLAG_ATTEMPTED;
+    if (buf_setlength(buf, curlen + 4 + 4 + l))
+      goto memerr;
+    set_cursor(buf, curlen);
+    if (buf_putint(buf, f) ||
+        buf_putint(buf, l) ||
+        buf_putdata(buf, hostname, l))
+      goto interr;
+    n++;
+    curlen = curlen + 4 + 4 + l;
+  }
+  
+  rc = sqlite3_finalize(st);
+  st=NULL;
+  if (rc != SQLITE_OK)
+    goto dberr;
+  if (n == 0) {
+    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
+  } else {
+    reset_cursor(buf);
+    buf_putint(buf, 0);
+    buf_putint(buf, n);
+    sess_send(sess, RESP_STATUS, buf);
+  }
+  goto freeall;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:
+  if (st)
+    sqlite3_finalize(st);
+  free(principal);
+}
+
+/* process a GETKEYS request. Returns all the keys the host should
+   add to its keytab. Produces a KEYS response if successful */
+static void s_getkeys(struct rekey_session *sess, mb_t buf)
+{
+  int m, rc;
+  size_t l, curlen;
+  sqlite3_stmt *st, *updatt, *updcount;
+  sqlite_int64 principal;
+  const char *pname;
+  int kvno, dbaction=0;
+    
+  if (sess->is_host == 0) {
+    send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
+    return;
+  } 
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  if (sql_begin_trans(sess))
+    goto dberrnomsg;
+  dbaction=-1;
+  
+  rc = sqlite3_prepare(sess->dbh,"SELECT id, name, kvno FROM principals, acl WHERE acl.hostname=? AND acl.principal=principals.id",
+                       -1, &st, NULL);
+
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(st, 1, sess->hostname, 
+                         strlen(sess->hostname), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "UPDATE acl SET attempted = 1 WHERE principal = ? AND hostname = ?;",
+			  -1, &updatt, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+  rc = sqlite3_bind_text(updatt, 2, sess->hostname, 
+                         strlen(sess->hostname), SQLITE_STATIC);
+  if (rc != SQLITE_OK)
+    goto dberr;
+
+  rc = sqlite3_prepare_v2(sess->dbh, 
+			  "UPDATE principals SET downloadcount = downloadcount +1 WHERE id = ?;",
+			  -1, &updcount, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
+
+  m=0;
+  curlen=4;
+  
+  while (SQLITE_ROW == sqlite3_step(st)) {
+    principal=sqlite3_column_int64(st, 0);
+    pname = (const char *)sqlite3_column_text(st, 1);
+    kvno = sqlite3_column_int(st, 2);
+    l = sqlite3_column_bytes(st, 1);
+    if (pname == NULL || l == 0)
+      goto interr;
+    if (!strcmp(pname, "0") || 
+	principal == 0)
+      goto dberr;
+    if (buf_setlength(buf, curlen + 8 + l)) /* name length, kvno */
+      goto memerr;
+    set_cursor(buf, curlen);
+    if (buf_putint(buf, l) || 
+	buf_putdata(buf, pname, l) ||
+	buf_putint(buf, kvno))
+      goto interr;
+    if (add_keys_one(sess, principal, kvno, buf, &curlen))
+      goto freeall;
+
+    m++;
+
+    rc = sqlite3_bind_int64(updatt, 1, principal);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updatt);    
+    rc = sqlite3_reset(updatt);
+    if (rc != SQLITE_OK)
+      goto dberr;
+
+    rc = sqlite3_bind_int64(updcount, 1, principal);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    sqlite3_step(updcount);    
+    rc = sqlite3_reset(updcount);
+    if (rc != SQLITE_OK)
+      goto dberr;
+  }
+  if (m == 0) {
+    send_error(sess, ERR_NOKEYS, "No keys available for this host");
+  } else {
+    set_cursor(buf, 0);
+    if (buf_putint(buf, m))
+      goto interr;
+    sess_send(sess, RESP_KEYS, buf);
+    dbaction=1;
+  }    
+  
+  goto freeall;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+ freeall:
+  if (st)
+    sqlite3_finalize(st);
+  if (updatt)
+    sqlite3_finalize(updatt);
+  if (updcount)
+    sqlite3_finalize(updcount);
+  if (dbaction > 0)
+    sql_commit_trans(sess);
+  else if (dbaction < 0)
+    sql_rollback_trans(sess);
+}
+
+/* process a COMMITKEY request. This request (verb) that the client has
+   successfully stored the key. if appropriate, we store the new keys to 
+   the kdb. Replies with OK if successful. */
 static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
-  sqlite3_stmt *checkcomp=NULL;
   sqlite_int64 princid;
-  unsigned int l, kvno, match, no_send = 0;
+  unsigned int l, kvno, no_send = 0;
   char *principal = NULL;
-  int dbaction=0, rc;
+  int dbaction=0, rc, match;
   krb5_principal target=NULL;
     
 
@@ -1479,25 +1584,12 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     if (sql_commit_trans(sess))
       goto dberr;
     /* at this point, the client doesn't care about future errors */
-    do_send(sess->ssl, RESP_OK, NULL);
+    sess_send(sess, RESP_OK, NULL);
     no_send = 1;
   }
   
-  rc = sqlite3_prepare_v2(sess->dbh,
-			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
-			  -1, &checkcomp, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  rc = sqlite3_bind_int64(checkcomp, 1, princid);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
-    match++;
-  }
-  rc = sqlite3_finalize(checkcomp);
-  checkcomp=NULL;
-  if (rc != SQLITE_OK)
+  match = check_uncommited(sess, princid);
+  if (match < 0)
     goto dberr;
   /* not done yet */
   if (match)
@@ -1524,8 +1616,6 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     sqlite3_finalize(updcomp);
   if (updcount)
     sqlite3_finalize(updcount);
-  if (checkcomp)
-    sqlite3_finalize(checkcomp);
   if (dbaction > 0)
     sql_commit_trans(sess);
   else if (dbaction < 0)
@@ -1536,6 +1626,10 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 
 }
 
+/* Process a SIMPLEKEY request. This is a request by an admin to update the 
+   key of a single principal and return a keyset for it. No acl/hostlist is 
+   set up. This is used for rekeying non-shared principals and may be used 
+   to create a new principal. sends a KEYS response if successful */
 static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
   char *principal=NULL;
@@ -1593,7 +1687,8 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (generate_keys(sess, princid, desonly))
     goto freeall;
 
-  if (buf_setlength(buf, 12 + strlen(principal))) /* name length, kvno */
+  if (buf_setlength(buf, 12 + strlen(principal))) /* key count, 
+                                                     name length, kvno */
     goto memerr;
   if (buf_putint(buf, 1) || buf_putint(buf, l) || 
       buf_putdata(buf, principal, l) || buf_putint(buf, kvno))
@@ -1602,6 +1697,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (add_keys_one(sess, princid, kvno, buf, &curlen))
     goto freeall;
   dbaction=1;
+  sess_send(sess, RESP_KEYS, buf);
   
   goto freeall;
  dberrnomsg:
@@ -1625,23 +1721,61 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     krb5_free_principal(sess->kctx, target);
   free(principal);
 }
+
+/* Process an ABORTREQ request. Deletes a request from the local database */
 static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
+  char *principal = NULL;
+  sqlite_int64 princid;
+  int l, match;
+  
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
-  send_error(sess, ERR_BADOP, "Not implemented yet");
+  if (buf_getint(buf, &l))
+    goto badpkt;
+  principal = malloc(l + 1);
+  if (!principal)
+    goto memerr;
+  if (buf_getdata(buf, principal, l))
+    goto badpkt;
+  principal[l]=0;
+  
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  match = find_principal(sess, principal, &princid, NULL);
+  if (match < 0)
+    goto dberr;
+
+  if (match == 0) {
+    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
+    goto freeall;
+  }
+  do_purge(sess, princid);
+  sess_send(sess, RESP_OK, NULL);  
+  goto freeall;
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ memerr:
+  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:  
+  free(principal);
 }
 
 static void s_finalize(struct rekey_session *sess, mb_t buf)
 {
   char *principal = NULL;
-  sqlite3_stmt *getprinc=NULL;
-  sqlite3_stmt *checkcomp=NULL;
   sqlite_int64 princid;
-  unsigned int l, kvno, match;
-  int rc;
+  unsigned int l, kvno;
+  int rc, match;
   krb5_principal target=NULL;
 
   if (sess->is_admin == 0) {
@@ -1667,48 +1801,19 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
   if (sql_init(sess))
     goto dberrnomsg;
 
-  rc = sqlite3_prepare_v2(sess->dbh, 
-                          "SELECT id, kvno FROM principals WHERE name=?",
-                          -1, &getprinc, NULL);
-  if (rc != SQLITE_OK)
+  match = find_principal(sess, principal, &princid, &kvno);
+  if (match < 0)
     goto dberr;
-  rc = sqlite3_bind_text(getprinc, 1, principal, strlen(principal), SQLITE_STATIC);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(getprinc)) {
-    princid = sqlite3_column_int64(getprinc, 0);
-    kvno = sqlite3_column_int(getprinc, 1);
-    if (princid == 0)
-      goto dberr;
-    match++;
-  }
-  
-  rc = sqlite3_finalize(getprinc);
-  getprinc=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
+
   if (match == 0) {
     send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
     goto freeall;
   }
 
-  rc = sqlite3_prepare_v2(sess->dbh,
-			  "SELECT principal FROM acl WHERE principal = ? AND completed = 0;",
-			  -1, &checkcomp, NULL);
-  if (rc != SQLITE_OK)
+  match = check_uncommited(sess, princid);
+  if (match < 0)
     goto dberr;
-  rc = sqlite3_bind_int64(checkcomp, 1, princid);
-  if (rc != SQLITE_OK)
-    goto dberr;
-  match=0;
-  while (SQLITE_ROW == sqlite3_step(checkcomp)) {
-    match++;
-  }
-  rc = sqlite3_finalize(checkcomp);
-  checkcomp=NULL;
-  if (rc != SQLITE_OK)
-    goto dberr;
+  
   /* not done yet */
   if (match) {
     send_error(sess, ERR_OTHER, "Request is not ready to be finalized");
@@ -1717,7 +1822,7 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
 
   if (do_finalize_req(sess, 0, principal, princid, target, kvno))
     goto freeall;
-  do_send(sess->ssl, RESP_OK, NULL);
+  sess_send(sess, RESP_OK, NULL);
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
@@ -1729,10 +1834,6 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:  
-  if (getprinc)
-    sqlite3_finalize(getprinc);
-  if (checkcomp)
-    sqlite3_finalize(checkcomp);
   if (target)
     krb5_free_principal(sess->kctx, target);  
   free(principal);
@@ -1765,11 +1866,12 @@ void run_session(int s) {
   sess.ssl = do_ssl_accept(s);
   child_cleanup();
   sess.initialized=1;
+  sess.state = REKEY_SESSION_LISTENING;
   for (;;) {
-    opcode = do_recv(sess.ssl, buf);
+    opcode = sess_recv(&sess, buf);
     
     if (opcode == -1) {
-      do_finalize(&sess);
+      sess_finalize(&sess);
       ssl_cleanup();
       fatal("Connection closed");
     }
@@ -1784,6 +1886,11 @@ void run_session(int s) {
       func_table[opcode](&sess, buf);
       if (sess.initialized == 0)
         fatal("session terminated during operation %d, but handler did not exit", opcode);
+      if (sess.state != REKEY_SESSION_IDLE) {
+        send_error(&sess, ERR_OTHER, "Internal error in server");
+        prtmsg("Handler for %d did not send a reply", opcode);
+      }
+      sess.state = REKEY_SESSION_LISTENING;
     }
   }
 }

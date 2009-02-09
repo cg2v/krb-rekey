@@ -9,7 +9,9 @@ SSL *c_connect(char *);
 void c_auth(SSL *, char *);
 void c_newreq(SSL *, char *, int, int, char **);
 void c_status(SSL *, char *);
-void c_getkeys(SSL *);
-void c_abort(SSL *ssl);
+void c_finalize(SSL *, char *);
+void c_simplekey(SSL *, char *, int, char *);
+void c_getkeys(SSL *, char *);
+void c_abort(SSL *ssl, char *);
 void c_close(SSL *ssl);
 #endif
