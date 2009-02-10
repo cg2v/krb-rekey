@@ -48,6 +48,8 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_ALLOCA
   gl_HEADER_ARPA_INET
   AC_PROG_MKDIR_P
+  gl_ENVIRON
+  gl_UNISTD_MODULE_INDICATOR([environ])
   gl_FLOAT_H
   gl_FUNC_FREXP_NO_LIBM
   gl_MATH_MODULE_INDICATOR([frexp])
@@ -63,6 +65,7 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_ISNANL_NO_LIBM
   gl_FUNC_MALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([malloc-posix])
+  gl_MALLOCA
   gl_MATH_H
   gl_FUNC_MEMCMP
   gl_FUNC_MEMSET
@@ -74,6 +77,8 @@ AC_DEFUN([gl_INIT],
   m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
   gl_FUNC_REALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([realloc-posix])
+  gl_FUNC_SETENV
+  gl_STDLIB_MODULE_INDICATOR([setenv])
   gl_SIGNBIT
   gl_MATH_MODULE_INDICATOR([signbit])
   gl_SIZE_MAX
@@ -241,7 +246,6 @@ AC_DEFUN([gltests_LIBSOURCES], [
 # gnulib-tool and may be removed by future gnulib-tool invocations.
 AC_DEFUN([gl_FILE_LIST], [
   build-aux/link-warning.h
-  build-aux/useless-if-before-free
   lib/alloca.in.h
   lib/arpa_inet.in.h
   lib/asnprintf.c
@@ -265,6 +269,9 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/isnanl-nolibm.h
   lib/isnanl.c
   lib/malloc.c
+  lib/malloca.c
+  lib/malloca.h
+  lib/malloca.valgrind
   lib/math.in.h
   lib/memcmp.c
   lib/memset.c
@@ -280,6 +287,7 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/printf-parse.c
   lib/printf-parse.h
   lib/realloc.c
+  lib/setenv.c
   lib/signbitd.c
   lib/signbitf.c
   lib/signbitl.c
@@ -304,6 +312,8 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/xsize.h
   m4/alloca.m4
   m4/arpa_inet_h.m4
+  m4/eealloc.m4
+  m4/environ.m4
   m4/eoverflow.m4
   m4/extensions.m4
   m4/float_h.m4
@@ -322,6 +332,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/ldexpl.m4
   m4/longlong.m4
   m4/malloc.m4
+  m4/malloca.m4
   m4/math_h.m4
   m4/memcmp.m4
   m4/memset.m4
@@ -332,6 +343,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/printf-frexpl.m4
   m4/printf.m4
   m4/realloc.m4
+  m4/setenv.m4
   m4/signbit.m4
   m4/size_max.m4
   m4/snprintf-posix.m4
