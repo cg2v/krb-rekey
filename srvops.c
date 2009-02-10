@@ -780,9 +780,9 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
   if (k) {
     for (i=0; i<nk; i++) {
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
-      free(k[nk].key_data_contents[0]);
+      free(k[i].key_data_contents[0]);
 #else
-      free(Z_keydata(&k[nk]));
+      free(Z_keydata(&k[i]));
 #endif
     }
   }
@@ -1419,6 +1419,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
 	buf_putdata(buf, pname, l) ||
 	buf_putint(buf, kvno))
       goto interr;
+    curlen = curlen + 8 + l;
     if (add_keys_one(sess, principal, kvno, buf, &curlen))
       goto freeall;
 

@@ -702,10 +702,11 @@ static int g_complete(void *vctx, char *principal, int kvno)
   int resp;
   
   commitbuf=buf_alloc(8 + strlen(principal));
-  if (!commitbuf) {
+  if (!commitbuf ||buf_setlength(commitbuf, 8 + strlen(principal))) {
     c_close(ssl);
     fatal("Internal error: Cannot get new buffer: %s", strerror(errno));
   }
+
   if (buf_putint(commitbuf, strlen(principal)) ||
       buf_putdata(commitbuf, principal, strlen(principal)) ||
       buf_putint(commitbuf, kvno)) {
