@@ -118,13 +118,13 @@
 /* finalize (complete) an in-progress rekey */
 /* There must not be any hosts which have not yet commited */
 /* requires admin authorization */
-#define OP_FINALIZE 9
+#define OP_FINALIZE 10
 /* data is principal name
   4 bytes of principal name length
   N bytes of principal name
 */
 
-#define MAX_OPCODE OP_ABORTREQ
+#define MAX_OPCODE OP_FINALIZE
 
 #define RESP_AUTH 128
 /* data is flags, gss context token

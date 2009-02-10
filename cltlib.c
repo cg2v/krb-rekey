@@ -648,18 +648,20 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
 	    prtmsg("This keytab has an entry for principal %s, kvno %u, enctype %u with a different key!", 
 		   principal, kvno, et);
             rc = krb5_kt_remove_entry(ctx, kt, &cmpe);
+	    krb5_free_keytab_entry_contents(ctx, &cmpe);
 	    if (rc) {
               prtmsg("krb5_kt_remove_entry failed (%s)", krb5_get_err_text(ctx, rc));
-              krb5_free_keytab_entry_contents(ctx, &cmpe);
+
               free(Z_keydata(&key));
               goto out;
               /* n_send_single=1; continue;*/
             }              
-	    krb5_free_keytab_entry_contents(ctx, &cmpe);
 	  } else {
+	    /* might not actually be for this enctype, so remove
+	     and readd even though the key is correct*/
+            krb5_kt_remove_entry(ctx, kt, &cmpe);
             krb5_free_keytab_entry_contents(ctx, &cmpe);
-            free(Z_keydata(&key));
-            continue;
+     
           }
         }
         
