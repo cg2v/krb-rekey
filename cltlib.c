@@ -647,7 +647,8 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
 	      memcmp(Z_keydata(&key), Z_keydata(cmp), Z_keylen(&key))) {
 	    prtmsg("This keytab has an entry for principal %s, kvno %u, enctype %u with a different key!", 
 		   principal, kvno, et);
-            if (krb5_kt_remove_entry(ctx, kt, &cmpe)) {
+            rc = krb5_kt_remove_entry(ctx, kt, &cmpe);
+	    if (rc) {
               prtmsg("krb5_kt_remove_entry failed (%s)", krb5_get_err_text(ctx, rc));
               krb5_free_keytab_entry_contents(ctx, &cmpe);
               free(Z_keydata(&key));
@@ -977,11 +978,10 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
   }
   reset_cursor(buf);
   done=0;
-  if (process_keys(ctx, kt, buf, count_complete, &done))
-    goto out;
-  if (done == 0)
-    goto out;
-  c_finalize(ssl, princ);
+  if (process_keys(ctx, kt, buf, count_complete, &done) || done == 0)
+    c_abort(ssl, princ);
+  else
+    c_finalize(ssl, princ);
  out:
   if (kt)
     krb5_kt_close(ctx, kt);

@@ -493,7 +493,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
         if (buf_putint(buf, ENCTYPE_DES_CBC_MD5) || buf_putint(buf, l) ||
             buf_putdata(buf, key, l))
           goto interr;
-	curlen = curlen + 16 + l;
+	curlen = curlen + 2 * (8 + l);
 	n += 2;
       }
       n++;
