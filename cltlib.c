@@ -549,9 +549,20 @@ void c_status(SSL *ssl, char *princ) {
 #define Z_enctype(keyblock)     ((keyblock)->keytype)
 #endif
 #ifdef HAVE_KRB5_KEYTAB_ENTRY_KEYBLOCK
-#define kte_keyblock(kte) (&kte.keyblock)
+#define kte_keyblock(kte) (&(kte)->keyblock)
 #else
-#define kte_keyblock(kte) (&kte.key)
+#define kte_keyblock(kte) (&(kte)->key)
+#endif
+#ifdef HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS
+/* nothing */
+#elif defined(HAVE_KRB5_KT_FREE_ENTRY)
+#define krb5_free_keyab_entry_contents krb5_kt_free_entry
+#else
+static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
+                                                  krb5_keytab_entry *ent) {
+  krb5_free_principal(ctx, ent->principal);
+  return krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
+}
 #endif
 
 #ifndef HAVE_KRB5_GET_ERR_TEXT
@@ -630,27 +641,28 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
 	rc = krb5_kt_get_entry(ctx, kt, ent.principal,
 				      ent.vno, et, &cmpe);
 	if (rc == 0) {
-          cmp = kte_keyblock(cmpe);
+          cmp = kte_keyblock(&cmpe);
 	  if (Z_keylen(&key) != Z_keylen(cmp) ||
 	      memcmp(Z_keydata(&key), Z_keydata(cmp), Z_keylen(&key))) {
 	    prtmsg("This keytab has an entry for principal %s, kvno %u, enctype %u with a different key!", 
 		   principal, kvno, et);
             if (krb5_kt_remove_entry(ctx, kt, &cmpe)) {
               prtmsg("krb5_kt_remove_entry failed (%s)", krb5_get_err_text(ctx, rc));
-              krb5_kt_free_entry(ctx, &cmpe);
+              krb5_free_keytab_entry_contents(ctx, &cmpe);
               free(Z_keydata(&key));
               goto out;
               /* n_send_single=1; continue;*/
             }              
+	    krb5_free_keytab_entry_contents(ctx, &cmpe);
 	  } else {
-            krb5_kt_free_entry(ctx, &cmpe);
+            krb5_free_keytab_entry_contents(ctx, &cmpe);
             free(Z_keydata(&key));
             continue;
           }
         }
         
       }
-      rc = krb5_copy_keyblock_contents(ctx, &key, kte_keyblock(ent));
+      rc = krb5_copy_keyblock_contents(ctx, &key, kte_keyblock(&ent));
       free(Z_keydata(&key));
       if (rc) {
 	prtmsg("krb5_copy_keyblock_contents failed: %s", krb5_get_err_text(ctx, rc));
@@ -662,7 +674,7 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
 	prtmsg("krb5_kt_add_entry failed: %s", krb5_get_err_text(ctx, rc));
 	no_send_single=1;
       }
-      krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
+      krb5_free_keyblock_contents(ctx, kte_keyblock(&ent));
     }
     /* maybe close & reopen keytab? */
     if (skip == 0 && no_send == 0 && no_send_single == 0) {

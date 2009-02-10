@@ -493,7 +493,8 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
         if (buf_putint(buf, ENCTYPE_DES_CBC_MD5) || buf_putint(buf, l) ||
             buf_putdata(buf, key, l))
           goto interr;
-        curlen = curlen + 16 + l;
+	curlen = curlen + 16 + l;
+	n += 2;
       }
       n++;
     }
@@ -1148,7 +1149,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   } 
   new = strdup(unp);
 #ifdef HAVE_KRB5_FREE_UNPARSED_NAME
-  krb5_free_unparsed_name(ctx, unp);
+  krb5_free_unparsed_name(sess->kctx, unp);
 #else
   krb5_xfree(unp);
 #endif
@@ -1727,7 +1728,8 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
   char *principal = NULL;
   sqlite_int64 princid;
-  int l, match;
+  int match;
+  unsigned int l;
   
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
@@ -1774,8 +1776,8 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
 {
   char *principal = NULL;
   sqlite_int64 princid;
-  unsigned int l, kvno;
-  int rc, match;
+  unsigned int l;
+  int rc, match, kvno;
   krb5_principal target=NULL;
 
   if (sess->is_admin == 0) {
