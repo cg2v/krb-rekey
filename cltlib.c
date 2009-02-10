@@ -561,7 +561,8 @@ void c_status(SSL *ssl, char *princ) {
 static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
                                                   krb5_keytab_entry *ent) {
   krb5_free_principal(ctx, ent->principal);
-  return krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
+  krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
+  return 0;
 }
 #endif
 

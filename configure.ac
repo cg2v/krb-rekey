@@ -98,7 +98,7 @@ LIBS="$LIB_KRB5 $LIBS"
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
 AC_CHECK_TYPES([krb5_realm], , , [#include <krb5.h>])
-AC_CHECK_FUNCS([krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents ktb5_kt_free_entry])
+AC_CHECK_FUNCS([krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry])
 AC_MSG_CHECKING([for krb5_princ_component])
 AC_TRY_LINK([#ifdef HAVE_KRB5_KRB5_H
 #include <krb5/krb5.h>
