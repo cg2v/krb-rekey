@@ -235,7 +235,7 @@ void send_gss_token(struct rekey_session *sess, int opcode,
   buf_free(auth);
 }
 
-#include "sqlinit.c"
+#include "sqlinit.h"
 int sql_init(struct rekey_session *sess) 
 {
   sqlite3 *dbh;

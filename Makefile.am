@@ -2,23 +2,23 @@ AUTOMAKE_OPTIONS=foreign 1.9
 bin_PROGRAMS=rekeymgr
 sbin_PROGRAMS=rekeysrv getnewkeys
 noinst_PROGRAMS=rekeytest
-EXTRA_DIST=*.pem m4/gnulib-cache.m4
-BUILT_SOURCES=sqlinit.c dhp512.c dhp3072.c
-CLEANFILES = sqlinit.c dhp512.c dhp3072.c
-CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c
-rekeysrv_DEPENDENCIES=sqlinit.c dhp512.c dhp3072.c
+EXTRA_DIST=dhp1024.pem  dhp2048.pem  dhp3072.pem  dhp4096.pem  dhp512.pem \
+   dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql
+BUILT_SOURCES=sqlinit.h dhp512.h dhp3072.h
+CLEANFILES = sqlinit.h dhp512.h dhp3072.h
+CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c memmgt.h  protocol.h  rekeyclt-locl.h  rekey-locl.h
 rekeymgr_SOURCES=rekeyclt.c $(CLIENT_SOURCES)
 rekeymgr_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
 getnewkeys_SOURCES=getnewkeys.c $(CLIENT_SOURCES)
 getnewkeys_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
 rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
 rekeytest_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
-rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c srvutil.c rekeylib.c memmgt.c
+rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp512.h dhp3072.h
 rekeysrv_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ @LIB_KADMS@ @LIB_KRB5@ @LIB_SQLITE3@
 
-%.c: %.pem
+%.h: %.pem
 	openssl dhparam -C -noout -in $< | sed 's/^DH \*get_dh/static DH *get_dh/' > $@
-sqlinit.c: sqlembed.pl rekey.sql
+sqlinit.h: sqlembed.pl rekey.sql
 	perl sqlembed.pl < rekey.sql > $@
 SUBDIRS=lib
 ACLOCAL_AMFLAGS=-I m4

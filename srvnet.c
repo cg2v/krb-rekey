@@ -73,8 +73,8 @@
 
 static SSL_CTX *sslctx;
 
-#include "dhp512.c"
-#include "dhp3072.c"
+#include "dhp512.h"
+#include "dhp3072.h"
 
 static DH *get_dh(SSL *ssl, int is_export, int keysize) {
   DH *ret;
