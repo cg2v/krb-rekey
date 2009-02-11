@@ -475,9 +475,10 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
 
 void c_status(SSL *ssl, char *princ) {
   mb_t buf;
-  unsigned int f, i, n, l, resp;
+  unsigned int f, i, n, l, resp, t;
   char *hostname=NULL, *new;
   size_t curlen;
+  int kvno;
 
   buf = buf_alloc(4 + strlen(princ));
   if (!buf) {
@@ -507,13 +508,23 @@ void c_status(SSL *ssl, char *princ) {
   }
   reset_cursor(buf);
   if (buf_getint(buf, &f) ||
+      buf_getint(buf, &t) ||
       buf_getint(buf, &n)) {
     prtmsg("Server sent malformed reply");
     goto out;
   }
-  
+  if (t > INT_MAX) {
+    prtmsg("kvno is too large for signed int!");
+    kvno=-1;
+  } else {
+    kvno=t;
+  }
+
   if (f != 0)
     prtmsg("Unknown flags 0x%x received", f);
+  prtmsg("Rekey in progress; new kvno will be %d", kvno);
+  if (n == 0)
+    prtmsg("No hosts in access list -- direct rekey in progress");
     
   for (i=0; i<n; i++) {
     if (buf_getint(buf, &f) ||
@@ -533,6 +544,8 @@ void c_status(SSL *ssl, char *princ) {
     hostname[l]=0;
     prtmsg("Host %s has%s finished rekeying for this principal",
            hostname, (f & STATUSFLAG_COMPLETE) ? "" : " not");
+    if ((f & (STATUSFLAG_COMPLETE|STATUSFLAG_ATTEMPTED)) == STATUSFLAG_ATTEMPTED)
+      prtmsg("Host %s has downloaded this key", hostname);
   }
  out:
   free(hostname);

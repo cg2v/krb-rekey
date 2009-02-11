@@ -160,6 +160,7 @@
 #define RESP_STATUS 134
 /* data is flags, status of each authorized client 
    4 bytes of flags
+   4 bytes of kvno
    4 bytes of access list count {
      4 bytes of per-entry flags
      4 bytes of hostname length

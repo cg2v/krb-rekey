@@ -1262,10 +1262,11 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
 static void s_status(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *st=NULL;
+  sqlite_int64 princid;
   char *principal = NULL;
   const char *hostname=NULL;
   unsigned int f, l, n;
-  int rc;
+  int rc, kvno;
   size_t curlen;
 
   if (sess->is_admin == 0) {
@@ -1284,7 +1285,14 @@ static void s_status(struct rekey_session *sess, mb_t buf)
 
   if (sql_init(sess))
     goto dberrnomsg;
-
+  
+  rc = find_principal(sess, principal, &princid, &kvno);
+  if (rc < 0)
+    goto dberr;
+  if (rc == 0) {
+    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
+    goto freeall;
+  }
   rc = sqlite3_prepare_v2(sess->dbh, 
                           "SELECT hostname,completed,attempted FROM principals,acl WHERE name=? AND principal = id",
                           -1, &st, NULL);
@@ -1294,7 +1302,7 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   if (rc != SQLITE_OK)
     goto dberr;
   n=0;
-  curlen=8;
+  curlen=12;
   
   while (SQLITE_ROW == sqlite3_step(st)) {
     hostname = (const char *)sqlite3_column_text(st, 0);
@@ -1323,14 +1331,13 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   st=NULL;
   if (rc != SQLITE_OK)
     goto dberr;
-  if (n == 0) {
-    send_error(sess, ERR_NOTFOUND, "Requested principal does not have rekey in progress");
-  } else {
-    reset_cursor(buf);
-    buf_putint(buf, 0);
-    buf_putint(buf, n);
-    sess_send(sess, RESP_STATUS, buf);
-  }
+  
+  reset_cursor(buf);
+  buf_putint(buf, 0);
+  buf_putint(buf, kvno);
+  buf_putint(buf, n);
+  sess_send(sess, RESP_STATUS, buf);
+
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
