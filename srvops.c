@@ -1313,9 +1313,9 @@ static void s_status(struct rekey_session *sess, mb_t buf)
       goto dberr;
     f = 0;
     if (sqlite3_column_int(st, 1))
-      f=STATUSFLAG_COMPLETE;
+      f|=STATUSFLAG_COMPLETE;
     if (sqlite3_column_int(st, 2))
-      f=STATUSFLAG_ATTEMPTED;
+      f|=STATUSFLAG_ATTEMPTED;
     if (buf_setlength(buf, curlen + 4 + 4 + l))
       goto memerr;
     set_cursor(buf, curlen);

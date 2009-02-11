@@ -107,8 +107,10 @@ int main(int argc, char **argv) {
     servername = get_server(realm);
   conn = c_connect(servername);
   c_auth(conn, servername);
+#if 0
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
+#endif
 
   if (!strcmp(cmd, "start")) {
     if (argc < optind)
