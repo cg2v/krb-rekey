@@ -33,6 +33,7 @@ AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
 AC_MSG_ERROR([No sqlite library found])])
 AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL=-lssl], [
 AC_MSG_ERROR([No openssl library found])])
+AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
 AC_SUBST([LIB_GSS LIB_KRB5 LIB_KADMS LIB_SQLITE3 LIB_SSL])
 
 # Checks for header files.

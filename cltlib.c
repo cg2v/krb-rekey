@@ -553,10 +553,10 @@ void c_status(SSL *ssl, char *princ) {
 #else
 #define kte_keyblock(kte) (&(kte)->key)
 #endif
-#ifdef HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS
-/* nothing */
-#elif defined(HAVE_KRB5_KT_FREE_ENTRY)
+#if defined(HAVE_KRB5_KT_FREE_ENTRY)
 #define krb5_free_keytab_entry_contents krb5_kt_free_entry
+#elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
+/* nothing */
 #else
 static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
                                                   krb5_keytab_entry *ent) {

@@ -1148,10 +1148,10 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   new = strdup(unp);
-#ifdef HAVE_KRB5_FREE_UNPARSED_NAME
-  krb5_free_unparsed_name(sess->kctx, unp);
-#else
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
   krb5_xfree(unp);
+#else
+  krb5_free_unparsed_name(sess->kctx, unp);
 #endif
   if (!new)
     goto memerr;
