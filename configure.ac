@@ -34,7 +34,10 @@ AC_MSG_ERROR([No sqlite library found])])
 AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL=-lssl], [
 AC_MSG_ERROR([No openssl library found])])
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
-AC_SUBST([LIB_GSS LIB_KRB5 LIB_KADMS LIB_SQLITE3 LIB_SSL])
+AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
+AC_MSG_ERROR([No ldap groups library found])])
+
+AC_SUBST([LIB_GSS LIB_KRB5 LIB_KADMS LIB_SQLITE3 LIB_SSL LIB_GROUPS])
 
 # Checks for header files.
 AC_HEADER_STDC

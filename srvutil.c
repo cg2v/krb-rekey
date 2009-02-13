@@ -53,8 +53,6 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#define DBFILE "/tmp/rekey.db"
-
 #define SESS_PRIVATE
 #define NEED_SSL
 #define NEED_KRB5
@@ -246,7 +244,7 @@ int sql_init(struct rekey_session *sess)
     return 0;
   
 #if SQLITE_VERSION_NUMBER >= 3005000
-  rc = sqlite3_open_v2(DBFILE, &dbh, SQLITE_OPEN_READWRITE, NULL);
+  rc = sqlite3_open_v2(REKEY_LOCAL_DATABASE, &dbh, SQLITE_OPEN_READWRITE, NULL);
   if (rc == SQLITE_OK) {
     sess->dbh = dbh;
     return 0;
@@ -257,14 +255,14 @@ int sql_init(struct rekey_session *sess)
     return 1;
   }
 
-  rc = sqlite3_open_v2(DBFILE, &dbh, SQLITE_OPEN_READWRITE | 
+  rc = sqlite3_open_v2(REKEY_LOCAL_DATABASE, &dbh, SQLITE_OPEN_READWRITE | 
                        SQLITE_OPEN_CREATE, NULL);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
     return 1;
   }
 #else
-  rc = sqlite3_open(DBFILE, &dbh);
+  rc = sqlite3_open(REKEY_LOCAL_DATABASE, &dbh);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
     return 1;

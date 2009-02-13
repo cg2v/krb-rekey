@@ -87,6 +87,9 @@ struct rekey_session {
 struct rekey_session;
 #endif
 
+#define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu"
+#define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
+
 struct gss_OID_desc_struct;
 struct gss_buffer_desc_struct;
 struct sockaddr;

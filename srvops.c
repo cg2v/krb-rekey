@@ -55,6 +55,7 @@
 #include <sys/signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <groups.h>
 
 #define SESS_PRIVATE
 #define NEED_KRB5
@@ -105,6 +106,45 @@ static krb5_enctype future_enctypes[] = {
 #define cur_enctypes future_enctypes
 #endif
 
+static int in_admin_group(const char *username) 
+{
+  GROUPS *g;
+  int rc, ret=0;
+  
+  g = groups_init();
+  if (!g) {
+    prtmsg("Cannot initialize groups library");
+    return 0;
+  }
+#ifdef GROUPS_FLAG_TLS
+  if (groups_config(g, GROUPS_FLAG_TLS, NULL) ||
+      groups_config(g, GROUPS_FLAG_TLS_CERT, NULL) ||
+      groups_config(g, GROUPS_FIELD_TLS_CADIR, "/etc/trustedcert") ||
+      groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
+    prtmsg("Cannot configure groups library: %s", groups_error(g));
+    goto freeall;
+  }
+#else
+  prtmsg("No SSL/TLS support in <groups.h>. authz checks will not be trustworthy");
+  if (groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
+    prtmsg("Cannot configure groups library: %s", groups_error(g));
+    goto freeall;
+  }
+#endif
+  
+  rc = groups_anyuser_in(g, username, REKEY_ADMIN_GROUP, "owner",
+                         GROUPS_ANYUSER_ANDREW | GROUPS_ANYUSER_TRYAUTHENT |
+                         GROUPS_ANYUSER_NOPTS);
+  
+  if (rc < 0)
+    prtmsg("Unable to check group membership: %s", groups_error(g));
+  else
+    ret = (rc > 0);
+ freeall:
+  groups_destroy(g);
+  return ret;
+}
+
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {
@@ -113,6 +153,7 @@ static void check_authz(struct rekey_session *sess)
   const char  *princ_realm, *c1, *c2, *c3;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   krb5_data *princ_realm, *c1, *c2;
+  char *username;
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
@@ -137,9 +178,9 @@ static void check_authz(struct rekey_session *sess)
     goto out;
   }
   
-  if (c1 && c2 && !c3 && !memcmp(c2, "admin", 5)) {
+  if (c1 && c2 && !c3 && !memcmp(c2, "admin", 5) &&
+      in_admin_group(c1)) {
     sess->is_admin = 1;
-    goto out;
   }
 
  out:
@@ -167,8 +208,14 @@ static void check_authz(struct rekey_session *sess)
   }
   
   if (c2->length == 5 && !strncmp(c2->data, "admin", 5)) {
-    sess->is_admin = 1;
-    goto out;
+    username=malloc(c1->length + 1);
+    if (!username)
+      goto out;
+    memcpy(username, c1->data, c1->length);
+    username[c1->length]=0;
+    if (in_admin_group(username))
+      sess->is_admin = 1;
+    free(username);
   }
 
  out:

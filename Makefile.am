@@ -14,7 +14,7 @@ getnewkeys_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@
 rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
 rekeytest_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ 
 rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp512.h dhp3072.h
-rekeysrv_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ @LIB_KADMS@ @LIB_KRB5@ @LIB_SQLITE3@
+rekeysrv_LDADD=$(LDADD) @LIB_GSS@ @LIB_SSL@ @LIB_KADMS@ @LIB_KRB5@ @LIB_SQLITE3@ @LIB_GROUPS@
 
 %.h: %.pem
 	openssl dhparam -C -noout -in $< | sed 's/^DH \*get_dh/static DH *get_dh/' > $@
