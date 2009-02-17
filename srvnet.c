@@ -128,6 +128,21 @@ void ssl_cleanup(void) {
 static int listenfds[16];
 static int nlfds;
 
+/* glibc 2.3.3 doesn't define AI_NUMERICSERV, but will accept a numeric service
+   anyway. gnulib's getaddrinfo.h supplies a definitition even if the
+   gnulib getaddrinfo implementation doesn't get used. the gnulib implementation does not provide/implement AI_ADDRCONFIG, so zero that if it's not defined
+ */
+#if __GLIBC__ && AI_NUMERICSERV > 128
+#ifdef AI_ADDRCONFIG
+/* assume glibc getaddrinfo will be used */
+#undef AI_NUMERICSERV
+#define AI_NUMERICSERV 0
+#else
+/* assume gnulib getaddrinfo will be used */
+#define AI_ADDRCONFIG 0
+#endif
+#endif
+
 void net_startup(void) {
   struct addrinfo ahints, *conn, *p;
   int i, s, rc;

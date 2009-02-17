@@ -120,6 +120,11 @@ static int in_admin_group(const char *username)
   if (groups_config(g, GROUPS_FLAG_TLS, NULL) ||
       groups_config(g, GROUPS_FLAG_TLS_CERT, NULL) ||
       groups_config(g, GROUPS_FIELD_TLS_CADIR, "/etc/trustedcert") ||
+#ifdef GROUPS_FIELD_TLS_CAFILE
+      /* openldap 2.0 doesn't fully implement LDAP_OPT_X_TLS_CACERTDIR */
+      /* special build of libgroups deals with this, so must we */
+      groups_config(g, GROUPS_FIELD_TLS_CADIR, "/etc/trustedcert/bundle-cmu.crt") ||
+#endif
       groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
     prtmsg("Cannot configure groups library: %s", groups_error(g));
     goto freeall;
@@ -227,7 +232,7 @@ static void check_authz(struct rekey_session *sess)
 /* check that the target principal is valid (in the correct realm, and
    any other checks we choose to implement (in testing, this includes
    restricting the first principal component to a specific string)) */
-#define LIMIT_TARGET "test"
+/*#define LIMIT_TARGET "test"*/
 
 static int check_target(struct rekey_session *sess, krb5_principal target) 
 {
@@ -235,14 +240,10 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
   char *realm;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm;
-#ifdef LIMIT_TARGET
-  const char  *c1;
-#endif
+  const char  *c1, *c2;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   krb5_data *princ_realm;
-#ifdef LIMIT_TARGET
-  krb5_data *c1;
-#endif
+  krb5_data *c1, *c2;
 #endif
 
   if (krb5_get_default_realm(sess->kctx, &realm))
@@ -255,12 +256,25 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
     send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
     goto out;
   }
-#ifdef LIMIT_TARGET
   c1 = krb5_principal_get_comp_string(sess->kctx, target, 0);
+  c2 = krb5_principal_get_comp_string(sess->kctx, target, 1);
+#ifdef LIMIT_TARGET
   if (!c1 || strlen(c1) != strlen(LIMIT_TARGET) || strcmp(c1, LIMIT_TARGET)) {
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
+#else
+  /* default principal exclusions: kadmin / *, local tgt. */
+  if (!c1) {
+badprinc:
+    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
+    goto out;
+  }
+  if (strlen(c1) == strlen("kadmin") && !strcmp(c1, "kadmin"))
+     goto badprinc;
+  if (strlen(c1) == strlen("krbtgt") && !strcmp(c1, "krbtgt") &&
+      strlen(c2) == strlen(princ_realm) && !strcmp(c2, princ_realm))
+     goto badprinc;
 #endif
   ret=0;
   
@@ -273,16 +287,34 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
     send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
     goto out;
   }
-#ifdef LIMIT_TARGET
   if (krb5_princ_size(sess->kctx, target) < 1)
     goto out;
   c1 = krb5_princ_component(sess->kctx, target, 0);
+  if (krb5_princ_size(sess->kctx, target) >= 2)
+    c2 = krb5_princ_component(sess->kctx, target, 1);
+  else
+    c2 = NULL;
+#ifdef LIMIT_TARGET
   if (!c1 || 
       c1->length != strlen(LIMIT_TARGET) || 
-      strcmp(c1->data, LIMIT_TARGET)) {
-       send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
+      strncmp(c1->data, LIMIT_TARGET, c1->length)) {
+    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
+#else
+  if (!c1) { 
+badprinc:
+    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
+    goto out;
+  }
+  if (c1->length == strlen("kadmin") &&
+      !strncmp(c1->data, "kadmin", c1->length)
+    goto badprinc;
+  if (c1->length == strlen("krbtgt") &&
+      !strncmp(c1->data, "krbtgt", c1->length) &&
+      c2 && c2->length == strlen(princ_realm) &&
+      !strcmp(c2->data, princ_realm, c2->length))
+    goto badprinc;
 #endif
   ret=0;
  out:
