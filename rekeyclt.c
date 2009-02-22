@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
       flag|=REQFLAG_DESONLY;
       break;
     case '?':
-      fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [d] command [args]\n");
+      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d] command [args]\n");
       exit(1);
     }
   }
@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
   if (argc - optind < 1) {
     
   usage:
-    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-d] command [args]\n");
+    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-d] command [args]\n");
     fprintf(stderr, "       rekeyclt start principalname hostname [hostname]...\n");
     fprintf(stderr, "       rekeyclt status principalname\n");
     fprintf(stderr, "       rekeyclt abort principalname\n");

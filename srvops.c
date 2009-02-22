@@ -1192,7 +1192,7 @@ static void s_authchan(struct rekey_session *sess, mb_t buf)
    replies with OK if successful */
 static void s_newreq(struct rekey_session *sess, mb_t buf) 
 {
-  char *principal=NULL, *unp, *new;
+  char *principal=NULL, *unp;
   char **hostnames=NULL;
   int desonly;
   unsigned int l, n, flag;
@@ -1226,16 +1226,20 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
     goto interr;
   } 
-  new = strdup(unp);
+  if (strcmp(unp, principal)) {
+    #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+    krb5_xfree(unp);
+#else
+    krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+    send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    goto freeall;
+  }
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
   krb5_xfree(unp);
 #else
   krb5_free_unparsed_name(sess->kctx, unp);
 #endif
-  if (!new)
-    goto memerr;
-  free(principal);
-  principal=new;
 
   if (buf_getint(buf, &flag))
     goto badpkt;
@@ -1441,17 +1445,42 @@ static void s_status(struct rekey_session *sess, mb_t buf)
    add to its keytab. Produces a KEYS response if successful */
 static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
-  int m, rc;
+  int i, m, rc;
   size_t l, curlen;
   sqlite3_stmt *st, *updatt, *updcount;
   sqlite_int64 principal;
   const char *pname;
+  char **names=NULL;
+  unsigned int n, sl;
   int kvno, dbaction=0;
     
   if (sess->is_host == 0) {
     send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
     return;
   } 
+
+  /* if buf->length is 0, or n is 0, then send all keys, otherwise only send 
+     matching keys */
+  if (buf->length > 0) {
+    if (buf_getint(buf, &n))
+      goto badpkt;
+    if (n) {
+      names=calloc(n, sizeof(char *));
+      if (!names)
+        goto memerr;
+      for (i=0;i<n;i++) {
+        if (buf_getint(buf, &sl))
+          goto badpkt;
+        names[i]=malloc(sl + 1);
+        if (!names[i])
+          goto memerr;
+        if (buf_getdata(buf, names[i], sl))
+          goto badpkt;
+        names[i][sl]=0;
+      }
+    }
+  }
+  
   if (sql_init(sess))
     goto dberrnomsg;
 
@@ -1498,6 +1527,16 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     if (!strcmp(pname, "0") || 
 	principal == 0)
       goto dberr;
+
+    if (names) {
+      for (i=0;i<n;i++)
+        if (!strcmp(pname, names[i]))
+          break;
+      /* don't send this one */
+      if (i >= n)
+        continue;
+    }
+
     if (buf_setlength(buf, curlen + 8 + l)) /* name length, kvno */
       goto memerr;
     set_cursor(buf, curlen);
@@ -1528,7 +1567,10 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
       goto dberr;
   }
   if (m == 0) {
-    send_error(sess, ERR_NOKEYS, "No keys available for this host");
+    if (names)
+      send_error(sess, ERR_NOKEYS, "None of the requested keys are available for this host");
+    else
+      send_error(sess, ERR_NOKEYS, "No keys available for this host");
   } else {
     set_cursor(buf, 0);
     if (buf_putint(buf, m))
@@ -1548,6 +1590,8 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
   goto freeall;
  memerr:
   send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:
   if (st)
     sqlite3_finalize(st);
@@ -1559,6 +1603,11 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     sql_commit_trans(sess);
   else if (dbaction < 0)
     sql_rollback_trans(sess);
+  if (names) {
+    for (i=0;i<n;i++)
+      free(names[i]);
+    free(names);
+  }
 }
 
 /* process a COMMITKEY request. This request (verb) that the client has

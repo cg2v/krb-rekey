@@ -137,6 +137,110 @@ char *get_server(char *realm) {
   return ret;
 }
 
+#ifdef HAVE_KRB5_KEYBLOCK_ENCTYPE
+#define Z_keydata(keyblock)     ((keyblock)->contents)
+#define Z_keylen(keyblock)      ((keyblock)->length)
+#define Z_enctype(keyblock)     ((keyblock)->enctype)
+#else
+#define Z_keydata(keyblock)     ((keyblock)->keyvalue.data)
+#define Z_keylen(keyblock)      ((keyblock)->keyvalue.length)
+#define Z_enctype(keyblock)     ((keyblock)->keytype)
+#endif
+#ifdef HAVE_KRB5_KEYTAB_ENTRY_KEYBLOCK
+#define kte_keyblock(kte) (&(kte)->keyblock)
+#else
+#define kte_keyblock(kte) (&(kte)->key)
+#endif
+#if defined(HAVE_KRB5_KT_FREE_ENTRY)
+#define krb5_free_keytab_entry_contents krb5_kt_free_entry
+#elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
+/* nothing */
+#else
+static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
+                                                  krb5_keytab_entry *ent) {
+  krb5_free_principal(ctx, ent->principal);
+  krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
+  return 0;
+}
+#endif
+
+#ifndef HAVE_KRB5_GET_ERR_TEXT
+#include <com_err.h>
+#define krb5_get_err_text(c, r) error_message(r)
+#endif
+
+int get_keytab_targets(char *keytab, int *n, char ***out) 
+{
+  krb5_context ctx;
+  krb5_keytab kt;
+  krb5_kt_cursor kc;
+  krb5_error_code rc;
+  int alloc, cur, i, ret=1;
+  char **princs, **new, *name=NULL;
+  
+  if ((rc=krb5_init_context(&ctx))) {
+    prtmsg("krb5_init_context failed: %d", rc);
+    return 1;
+  }
+  if (keytab) 
+    rc = krb5_kt_resolve(ctx, keytab, &kt);
+  else
+    rc = krb5_kt_default(ctx, &kt);
+  if (rc) {
+    prtmsg("cannot get keytab: %s", krb5_get_err_text(ctx, rc));
+    goto freeall;
+  }
+  alloc=5;
+  princs=malloc(alloc * sizeof(char *));
+  if (!princs) {
+    prtmsg("Memory allocation failed listing keytab");
+    goto freeall;
+  }
+  
+  rc = krb5_kt_start_seq_get(ctx, kt, &kc);
+  if (rc) {
+    prtmsg("cannot open keytab: %s", krb5_get_err_text(ctx, rc));
+    goto freeall;
+  }
+  while (0 == (rc = krb5_kt_next_entry(ctx, kt, &ent, &kc))) {
+    rc = krb5_unparse_name(ctx, ent.principal, &name);
+    if (rc) {
+      prtmsg("Warning: cannot get name string from keytab: %s", krb5_get_err_text(ctx, rc));
+      krb5_free_keytab_entry_contents(ctx, &ent);
+      
+      continue;
+    }
+    for (i=0;i < cur; i++)
+      if (!strcmp(name, princs[i]))
+        break;
+    if (i < cur)
+      continue;
+    princs[i]=strdup(name);
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+    krb5_xfree(name);
+#else
+    krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+
+    if (!princs[i]) {
+      prtmsg("Memory allocation failed listing keytab");
+      goto freeall;
+    }
+    
+      
+      
+    
+      
+  }
+  krb5_kt_end_seq_get(ctx, kt, &kc);
+  
+  if (rc != KRB5_KT_END)
+    prtmsg("Warning: strange result while reading from keytab: %s", krb5_get_err_text(ctx, rc));
+  if (cur == 0) {
+    prtmsg("No keys found in keytab; cannot update");
+    exit(1);
+  }
+
 
 SSL *c_connect(char *hostname) {
      SSL *ret;
@@ -552,37 +656,6 @@ void c_status(SSL *ssl, char *princ) {
   buf_free(buf);
 }
 
-#ifdef HAVE_KRB5_KEYBLOCK_ENCTYPE
-#define Z_keydata(keyblock)     ((keyblock)->contents)
-#define Z_keylen(keyblock)      ((keyblock)->length)
-#define Z_enctype(keyblock)     ((keyblock)->enctype)
-#else
-#define Z_keydata(keyblock)     ((keyblock)->keyvalue.data)
-#define Z_keylen(keyblock)      ((keyblock)->keyvalue.length)
-#define Z_enctype(keyblock)     ((keyblock)->keytype)
-#endif
-#ifdef HAVE_KRB5_KEYTAB_ENTRY_KEYBLOCK
-#define kte_keyblock(kte) (&(kte)->keyblock)
-#else
-#define kte_keyblock(kte) (&(kte)->key)
-#endif
-#if defined(HAVE_KRB5_KT_FREE_ENTRY)
-#define krb5_free_keytab_entry_contents krb5_kt_free_entry
-#elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
-/* nothing */
-#else
-static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
-                                                  krb5_keytab_entry *ent) {
-  krb5_free_principal(ctx, ent->principal);
-  krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
-  return 0;
-}
-#endif
-
-#ifndef HAVE_KRB5_GET_ERR_TEXT
-#include <com_err.h>
-#define krb5_get_err_text(c, r) error_message(r)
-#endif
 
 static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf, 
                         int (*complete)(void *rock, char *principal, int kvno),

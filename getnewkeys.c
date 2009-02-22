@@ -59,14 +59,21 @@
 #include "rekeyclt-locl.h"
 #include "protocol.h"
 
+  
+
 int main(int argc, char **argv) {
   SSL *conn;
   char *realm=NULL;
   char *servername=NULL;
   char *keytab=NULL;
   int optch;
+  int allkeys=0;
+  char *target=NULL;
+  char **targets=NULL;
+  int ntargets=0;
   
-  while ((optch = getopt(argc, argv, "k:r:s:")) != -1) {
+  
+  while ((optch = getopt(argc, argv, "k:r:s:ap:")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -77,11 +84,21 @@ int main(int argc, char **argv) {
     case 's':
       servername = optarg;
       break;
+    case 'a':
+      allkeys=1;
+      break;
+    case 'p':
+      target = optarg;
+      break;
     case '?':
-      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname]\n");
+      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname]\n [-a] [-p principalname]");
       exit(1);
     }
   }
+  
+  if (!target && !allkeys)
+    get_keytab_targets(keytab, &ntargets, &targets);
+    
   ssl_startup();
   if (!servername)
     servername = get_server(realm);
@@ -91,7 +108,13 @@ int main(int argc, char **argv) {
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
 #endif
-  c_getkeys(conn, keytab);
+  if (target) {
+    c_getkeys(conn, keytab, 1, &target);
+  } else {
+    /* if allkeys, ntargets will be 0 */
+    c_getkeys(conn, keytab, ntargets, targets);
+  }
+    
   c_close(conn);
   ssl_cleanup();
   return 0;
