@@ -96,8 +96,14 @@ int main(int argc, char **argv) {
     }
   }
   
-  if (!target && !allkeys)
-    get_keytab_targets(keytab, &ntargets, &targets);
+  if (!target && !allkeys) {
+    if (get_keytab_targets(keytab, &ntargets, &targets))
+       exit(1);
+    if (ntargets == 0) {
+       fprintf(stderr, "Keytab had no keys; not updating it (use -a or -p)\n");
+       exit(1);
+    }
+  }
     
   ssl_startup();
   if (!servername)

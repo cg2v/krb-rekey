@@ -151,7 +151,7 @@ char *get_server(char *realm) {
 #else
 #define kte_keyblock(kte) (&(kte)->key)
 #endif
-#if defined(HAVE_KRB5_KT_FREE_ENTRY)
+#if defined(HAVE_KRB5_KT_FREE_ENTRY) && defined(HAVE_DECL_KRB5_KT_FREE_ENTRY) && HAVE_DECL_KRB5_KT_FREE_ENTRY
 #define krb5_free_keytab_entry_contents krb5_kt_free_entry
 #elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
 /* nothing */
@@ -175,8 +175,9 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
   krb5_keytab kt;
   krb5_kt_cursor kc;
   krb5_error_code rc;
-  int alloc, cur, i, ret=1;
-  char **princs, **new, *name=NULL;
+  int alloc, cur=0, i, opened=0;
+  char **princs=NULL, **new, *name=NULL;
+  krb5_keytab_entry ent;
   
   if ((rc=krb5_init_context(&ctx))) {
     prtmsg("krb5_init_context failed: %d", rc);
@@ -202,6 +203,7 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
     prtmsg("cannot open keytab: %s", krb5_get_err_text(ctx, rc));
     goto freeall;
   }
+  opened=1;
   while (0 == (rc = krb5_kt_next_entry(ctx, kt, &ent, &kc))) {
     rc = krb5_unparse_name(ctx, ent.principal, &name);
     if (rc) {
@@ -215,32 +217,47 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
         break;
     if (i < cur)
       continue;
+    if (i >= alloc) {
+      alloc+=5;
+      new=realloc(princs, alloc * sizeof(char *));
+      if (!new) {
+	prtmsg("Memory allocation failed listing keytab");
+	goto freeall;
+      }
+      princs=new;
+    }
     princs[i]=strdup(name);
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
     krb5_xfree(name);
 #else
-    krb5_free_unparsed_name(sess->kctx, unp);
+    krb5_free_unparsed_name(ctx, name);
 #endif
 
     if (!princs[i]) {
       prtmsg("Memory allocation failed listing keytab");
       goto freeall;
     }
-    
-      
-      
-    
-      
   }
   krb5_kt_end_seq_get(ctx, kt, &kc);
   
   if (rc != KRB5_KT_END)
     prtmsg("Warning: strange result while reading from keytab: %s", krb5_get_err_text(ctx, rc));
-  if (cur == 0) {
-    prtmsg("No keys found in keytab; cannot update");
-    exit(1);
-  }
-
+  krb5_kt_close(ctx, kt);
+  krb5_free_context(ctx);
+  *n=cur;
+  *out=princs;
+  return 0;
+ freeall:
+  if (opened)
+    krb5_kt_end_seq_get(ctx, kt, &kc);
+  if (kt)
+    krb5_kt_close(ctx, kt);
+  krb5_free_context(ctx);
+  for (i=0;i<cur;i++)
+    free(princs[i]);
+  free(princs);
+  return 1;
+}
 
 SSL *c_connect(char *hostname) {
      SSL *ret;

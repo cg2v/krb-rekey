@@ -308,12 +308,12 @@ badprinc:
     goto out;
   }
   if (c1->length == strlen("kadmin") &&
-      !strncmp(c1->data, "kadmin", c1->length)
+      !strncmp(c1->data, "kadmin", c1->length))
     goto badprinc;
   if (c1->length == strlen("krbtgt") &&
       !strncmp(c1->data, "krbtgt", c1->length) &&
-      c2 && c2->length == strlen(princ_realm) &&
-      !strcmp(c2->data, princ_realm, c2->length))
+      c2 && c2->length == princ_realm->length &&
+      !strncmp(c2->data, princ_realm->data, c2->length))
     goto badprinc;
 #endif
   ret=0;
