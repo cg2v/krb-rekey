@@ -151,7 +151,7 @@ char *get_server(char *realm) {
 #else
 #define kte_keyblock(kte) (&(kte)->key)
 #endif
-#if defined(HAVE_KRB5_KT_FREE_ENTRY) && defined(HAVE_DECL_KRB5_KT_FREE_ENTRY) && HAVE_DECL_KRB5_KT_FREE_ENTRY
+#if defined(HAVE_KRB5_KT_FREE_ENTRY) && HAVE_DECL_KRB5_KT_FREE_ENTRY
 #define krb5_free_keytab_entry_contents krb5_kt_free_entry
 #elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
 /* nothing */
@@ -226,17 +226,18 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
       }
       princs=new;
     }
-    princs[i]=strdup(name);
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(name);
-#else
+    princs[cur]=strdup(name);
+#if HAVE_DECL_KRB5_FREE_UNPARSED_NAME
     krb5_free_unparsed_name(ctx, name);
+#else
+    krb5_xfree(name);
 #endif
 
-    if (!princs[i]) {
+    if (!princs[cur]) {
       prtmsg("Memory allocation failed listing keytab");
       goto freeall;
     }
+    cur++;
   }
   krb5_kt_end_seq_get(ctx, kt, &kc);
   
@@ -882,11 +883,12 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
 }
 
 
-void c_getkeys(SSL *ssl, char *keytab) {
+void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
   krb5_context ctx=NULL;
   krb5_keytab kt=NULL;
   mb_t buf;
-  int rc, resp, is_error=0;
+  int rc, resp, is_error=0, i;
+  size_t curlen;
 
   buf=buf_alloc(1);
   if (!buf) {
@@ -903,6 +905,27 @@ void c_getkeys(SSL *ssl, char *keytab) {
     goto out;  
 
   buf_setlength(buf, 0);
+  if (nprincs) {
+    if (buf_setlength(buf, 4) ||
+        buf_putint(buf, nprincs)) {
+        c_close(ssl);
+        fatal("Cannot extend buffer: %s", strerror(errno));
+    }   
+    curlen=4;
+    for (i=0;i<nprincs;i++) {
+      if (buf_setlength(buf, curlen + 4 + strlen(princs[i]))) {
+        c_close(ssl);
+        fatal("Cannot extend buffer: %s", strerror(errno));
+      }
+      set_cursor(buf, curlen);
+      if (buf_putint(buf, strlen(princs[i])) ||
+          buf_putdata(buf, princs[i], strlen(princs[i]))) {
+        c_close(ssl);
+        fatal("Cannot extend buffer: %s", strerror(errno));
+      }
+      curlen = curlen + 4 + strlen(princs[i]);
+    }   
+  }
   resp = sendrcv(ssl, OP_GETKEYS, buf);
   if (resp == RESP_ERR) {
     prt_err_reply(buf);

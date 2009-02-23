@@ -123,7 +123,7 @@ static int in_admin_group(const char *username)
 #ifdef GROUPS_FIELD_TLS_CAFILE
       /* openldap 2.0 doesn't fully implement LDAP_OPT_X_TLS_CACERTDIR */
       /* special build of libgroups deals with this, so must we */
-      groups_config(g, GROUPS_FIELD_TLS_CADIR, "/etc/trustedcert/bundle-cmu.crt") ||
+      groups_config(g, GROUPS_FIELD_TLS_CAFILE, "/etc/trustedcert/bundle-cmu.crt") ||
 #endif
       groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
     prtmsg("Cannot configure groups library: %s", groups_error(g));

@@ -62,16 +62,16 @@ int main(int argc, char **argv) {
 
   ssl_startup();
 
-  conn=c_connect("sphinx.andrew.cmu.edu");
-  c_auth(conn, "sphinx.andrew.cmu.edu");
+  conn=c_connect("rekey.andrew.cmu.edu");
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
+  c_auth(conn, "rekey.andrew.cmu.edu");
   if (argc > 2)
     c_newreq(conn, argv[1], 0, argc - 2, argv + 2);
   else if (argc == 2)
     c_status(conn, argv[1]);
   else 
-    c_getkeys(conn, "tmp.keytab");
+    c_getkeys(conn, "tmp.keytab", 0, NULL);
     
   SSL_shutdown(conn);
   SSL_free(conn);
