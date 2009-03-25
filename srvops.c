@@ -527,7 +527,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int d
 }
 
 /* Adds a keyset to a partially initialized KEYS response */
-static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int kvno, mb_t buf, size_t *startlen) 
+static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int kvno, mb_t buf) 
 {
   int rc;
   sqlite3_stmt *st;
@@ -535,9 +535,9 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
   size_t l, curlen, last;
   const unsigned char *key;
 
-  curlen = *startlen;
-  last = curlen; /* key count goes here */
-  curlen += 4; /* key count */
+  last = get_cursor(buf); /* key count goes here */
+  if (buf_appendint(buf, 0)) /* key count placeholder */
+    goto memerr;
   rc = sqlite3_prepare(sess->dbh,"SELECT enctype, key from keys where principal=?",
 		       -1, &st, NULL);
   if (rc != SQLITE_OK)
@@ -555,37 +555,30 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
 	goto interr;
       if (enctype == 0)
 	goto dberr;
-      if (buf_setlength(buf, curlen + 8 + l)) /* enctype, key length */
+      if (buf_appendint(buf, enctype) || buf_appendint(buf, l) ||
+	  buf_appenddata(buf, key, l))
 	goto memerr;
-      set_cursor(buf, curlen);
-      if (buf_putint(buf, enctype) || buf_putint(buf, l) ||
-	  buf_putdata(buf, key, l))
-	goto interr;
-      curlen = curlen + 8 + l;
       if (enctype == ENCTYPE_DES_CBC_CRC) {
-        if (buf_setlength(buf, curlen + 2 *(8 + l))) /* 8 is enctype, key length */
+        if (buf_appendint(buf, ENCTYPE_DES_CBC_MD4) || buf_appendint(buf, l) ||
+            buf_appenddata(buf, key, l))
           goto memerr;
-        set_cursor(buf, curlen);
-        if (buf_putint(buf, ENCTYPE_DES_CBC_MD4) || buf_putint(buf, l) ||
-            buf_putdata(buf, key, l))
-          goto interr;
-        if (buf_putint(buf, ENCTYPE_DES_CBC_MD5) || buf_putint(buf, l) ||
-            buf_putdata(buf, key, l))
-          goto interr;
-	curlen = curlen + 2 * (8 + l);
+        if (buf_appendint(buf, ENCTYPE_DES_CBC_MD5) || buf_appendint(buf, l) ||
+            buf_appenddata(buf, key, l))
+          goto memerr;
 	n += 2;
       }
       n++;
     }
+    curlen = get_cursor(buf);
     set_cursor(buf, last);
     if (buf_putint(buf, n))
       goto interr;
+    set_cursor(buf, curlen);
     rc = sqlite3_finalize(st);
     if (rc != SQLITE_OK)
       goto dberr;
     if (n == 0)   
       goto interr;
-    *startlen = curlen;
     return 0;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
@@ -914,7 +907,7 @@ static int check_uncommited(struct rekey_session *sess, sqlite_int64 princid)
 static void s_auth(struct rekey_session *sess, mb_t buf) {
   OM_uint32 maj, min, tmin, rflag;
   gss_buffer_desc in, out, outname;
-  unsigned int f;
+  unsigned int f, l;
   int gss_more_accept=0, gss_more_init=0;
   unsigned char *p;
   krb5_error_code rc;
@@ -933,8 +926,9 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
     goto badpkt;
   if (f & AUTHFLAG_MORE)
     gss_more_init = 1;
-  if (buf_getint(buf, (unsigned int *)&in.length))
+  if (buf_getint(buf, &l))
     goto badpkt;
+  in.length = l;
   in.value = buf->cursor;
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
@@ -1003,30 +997,19 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a kerberos name)");
       fatal("Cannot parse authenticated name (it is not a kerberos name)");
     }
-    /* skip oid */
-    p+=oidl;
-    if (buf_setlength(buf, outname.length) ||
-        buf_putdata(buf, outname.value, outname.length)) {
+    buf_setlength(buf, 0);
+    if (buf_appenddata(buf, outname.value, outname.length)) {
       send_fatal(sess, ERR_OTHER, "Internal error on server");
       fatal("internal error: cannot copy name structure");
     }      
-    /* skip over the header we already parsed */
-    set_cursor(buf, p - (unsigned char *)outname.value);
+    /* skip over the header/oid we already parsed */
+    set_cursor(buf, oidl + 6);
     gss_release_buffer(&tmin, &outname);
-    if (buf_getint(buf, &f)) {
+
+    if (buf_getstring(buf, &sess->plain_name, malloc)) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      fatal("Cannot parse authenticated name (buffer is too short)");
+      fatal("Cannot parse authenticated name (buffer is too short or memory allocation problem)");
     }
-    sess->plain_name=malloc(f + 1);
-    if (!sess->plain_name) {
-      send_fatal(sess, ERR_OTHER, "Internal error on server");
-      fatal("Cannot allocate memory");
-    }
-    if (buf_getdata(buf, sess->plain_name, f)) {
-      send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
-      fatal("Cannot parse authenticated name (buffer is broken [name length=%d, input buffer size=%d])", f, outname.length - (p - (unsigned char *)outname.value) - 4);
-    }
-    sess->plain_name[f]=0;
     if ((rc=krb5_parse_name(sess->kctx, sess->plain_name, &sess->princ))) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (unknown error)");
       fatal("Cannot parse authenticated name (kerberos error %s)", krb5_get_err_text(sess->kctx, rc));
@@ -1054,7 +1037,7 @@ static void s_autherr(struct rekey_session *sess, mb_t buf)
 {
   OM_uint32 maj, min;
   gss_buffer_desc in, out;
-  unsigned int f;
+  unsigned int f, l;
 
   if (sess->authstate) {
     send_error(sess, ERR_BADOP, "Authentication already complete");
@@ -1063,8 +1046,9 @@ static void s_autherr(struct rekey_session *sess, mb_t buf)
   
   if (buf_getint(buf, &f))
     goto badpkt;
-  if (buf_getint(buf, (unsigned int *)&in.length))
+  if (buf_getint(buf, (unsigned int *)&l))
     goto badpkt;
+  in.length=l;
   in.value = buf->cursor;
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
@@ -1161,8 +1145,8 @@ static void s_authchan(struct rekey_session *sess, mb_t buf)
    send_gss_error(sess, sess->mech, maj, min);
    exit(1);
  }
- if (buf_setlength(buf, out.length) ||
-     buf_putdata(buf, out.value, out.length)) {
+ buf_setlength(buf, 0);
+ if (buf_appenddata(buf, out.value, out.length)) {
     send_fatal(sess, ERR_OTHER, "Internal error on server");
     fatal("internal error: cannot pack channel binding structure");
  }
@@ -1195,7 +1179,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   char *principal=NULL, *unp;
   char **hostnames=NULL;
   int desonly;
-  unsigned int l, n, flag;
+  unsigned int n, flag;
   int i, rc;
   sqlite3_stmt *ins=NULL;
   int dbaction=0;
@@ -1206,14 +1190,8 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
   rc = krb5_parse_name(sess->kctx, principal, &target);
   if (rc) {
     prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
@@ -1256,14 +1234,8 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (!hostnames)
     goto memerr;
   for (i=0; i < n; i++) {
-    if (buf_getint(buf, &l))
+    if (buf_getstring(buf, &hostnames[i], malloc))
       goto badpkt;
-    hostnames[i] = malloc(l + 1);
-    if (!hostnames[i])
-      goto memerr;
-    if (buf_getdata(buf, hostnames[i], l))
-      goto badpkt;
-    hostnames[i][l]=0;
   }
   if (check_target(sess, target))
     goto freeall;
@@ -1348,23 +1320,16 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   sqlite_int64 princid;
   char *principal = NULL;
   const char *hostname=NULL;
-  unsigned int f, l, n;
+  unsigned int f, n;
   int rc, kvno;
-  size_t curlen;
 
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
 
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
 
   if (sql_init(sess))
     goto dberrnomsg;
@@ -1385,12 +1350,13 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   if (rc != SQLITE_OK)
     goto dberr;
   n=0;
-  curlen=12;
+  if (buf_setlength(buf, 12))
+    goto memerr;
+  set_cursor(buf, 12);
   
   while (SQLITE_ROW == sqlite3_step(st)) {
     hostname = (const char *)sqlite3_column_text(st, 0);
-    l = sqlite3_column_bytes(st, 0);
-    if (hostname == NULL || l == 0)
+    if (hostname == NULL || strlen(hostname) == 0)
       goto interr;
     if (!strcmp(hostname, "0"))
       goto dberr;
@@ -1399,15 +1365,10 @@ static void s_status(struct rekey_session *sess, mb_t buf)
       f|=STATUSFLAG_COMPLETE;
     if (sqlite3_column_int(st, 2))
       f|=STATUSFLAG_ATTEMPTED;
-    if (buf_setlength(buf, curlen + 4 + 4 + l))
-      goto memerr;
-    set_cursor(buf, curlen);
-    if (buf_putint(buf, f) ||
-        buf_putint(buf, l) ||
-        buf_putdata(buf, hostname, l))
+    if (buf_appendint(buf, f) ||
+        buf_appendstring(buf, hostname))
       goto interr;
     n++;
-    curlen = curlen + 4 + 4 + l;
   }
   
   rc = sqlite3_finalize(st);
@@ -1446,12 +1407,11 @@ static void s_status(struct rekey_session *sess, mb_t buf)
 static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
   int i, m, rc;
-  size_t l, curlen;
   sqlite3_stmt *st, *updatt, *updcount;
   sqlite_int64 principal;
   const char *pname;
   char **names=NULL;
-  unsigned int n, sl;
+  unsigned int n;
   int kvno, dbaction=0;
     
   if (sess->is_host == 0) {
@@ -1469,14 +1429,8 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
       if (!names)
         goto memerr;
       for (i=0;i<n;i++) {
-        if (buf_getint(buf, &sl))
+        if (buf_getstring(buf, &names[i], malloc))
           goto badpkt;
-        names[i]=malloc(sl + 1);
-        if (!names[i])
-          goto memerr;
-        if (buf_getdata(buf, names[i], sl))
-          goto badpkt;
-        names[i][sl]=0;
       }
     }
   }
@@ -1515,14 +1469,15 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     goto dberr;
 
   m=0;
-  curlen=4;
+  if (buf_setlength(buf, 4)) /* key count filled in later */
+      goto memerr;
+  set_cursor(buf, 4);
   
   while (SQLITE_ROW == sqlite3_step(st)) {
     principal=sqlite3_column_int64(st, 0);
     pname = (const char *)sqlite3_column_text(st, 1);
     kvno = sqlite3_column_int(st, 2);
-    l = sqlite3_column_bytes(st, 1);
-    if (pname == NULL || l == 0)
+    if (pname == NULL || strlen(pname) == 0)
       goto interr;
     if (!strcmp(pname, "0") || 
 	principal == 0)
@@ -1537,15 +1492,10 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
         continue;
     }
 
-    if (buf_setlength(buf, curlen + 8 + l)) /* name length, kvno */
+    if (buf_appendstring(buf, pname) || 
+	buf_appendint(buf, kvno))
       goto memerr;
-    set_cursor(buf, curlen);
-    if (buf_putint(buf, l) || 
-	buf_putdata(buf, pname, l) ||
-	buf_putint(buf, kvno))
-      goto interr;
-    curlen = curlen + 8 + l;
-    if (add_keys_one(sess, principal, kvno, buf, &curlen))
+    if (add_keys_one(sess, principal, kvno, buf))
       goto freeall;
 
     m++;
@@ -1617,7 +1567,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
   sqlite_int64 princid;
-  unsigned int l, kvno, no_send = 0;
+  unsigned int kvno, no_send = 0;
   char *principal = NULL;
   int dbaction=0, rc, match;
   krb5_principal target=NULL;
@@ -1627,14 +1577,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     send_error(sess, ERR_AUTHZ, "Not authorized");
     return;
   }
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
   rc = krb5_parse_name(sess->kctx, principal, &target);
   if (rc) {
     prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
@@ -1740,10 +1684,6 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   if (no_send == 0)
     send_error(sess, ERR_OTHER, "Server internal error (database failure)");
   goto freeall;
- memerr:
-  if (no_send == 0)
-    send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
-  goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:
@@ -1771,25 +1711,18 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
   char *principal=NULL;
   int desonly;
-  unsigned int l, flag;
+  unsigned int flag;
   int rc, kvno;
   int dbaction=0;
   sqlite_int64 princid;
   krb5_principal target=NULL;
-  size_t curlen;
 
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
   rc = krb5_parse_name(sess->kctx, principal, &target);
   if (rc) {
     prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
@@ -1824,14 +1757,12 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (generate_keys(sess, princid, desonly))
     goto freeall;
 
-  if (buf_setlength(buf, 12 + strlen(principal))) /* key count, 
-                                                     name length, kvno */
-    goto memerr;
-  if (buf_putint(buf, 1) || buf_putint(buf, l) || 
-      buf_putdata(buf, principal, l) || buf_putint(buf, kvno))
+  buf_setlength(buf, 0);
+  if (buf_appendint(buf, 1) || 
+      buf_appendstring(buf, principal) || buf_appendint(buf, kvno))
     goto interr;
-  curlen = 12 + strlen(principal);
-  if (add_keys_one(sess, princid, kvno, buf, &curlen))
+
+  if (add_keys_one(sess, princid, kvno, buf))
     goto freeall;
   dbaction=1;
   sess_send(sess, RESP_KEYS, buf);
@@ -1842,9 +1773,6 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   goto freeall;
  interr:
   send_error(sess, ERR_OTHER, "Server internal error");
-  goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
@@ -1865,20 +1793,13 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
   char *principal = NULL;
   sqlite_int64 princid;
   int match;
-  unsigned int l;
-  
+
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
     return;
   }
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
   
   if (sql_init(sess))
     goto dberrnomsg;
@@ -1899,9 +1820,6 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
   goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
-  goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:  
@@ -1912,7 +1830,6 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
 {
   char *principal = NULL;
   sqlite_int64 princid;
-  unsigned int l;
   int rc, match, kvno;
   krb5_principal target=NULL;
 
@@ -1921,14 +1838,8 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
     return;
   }
 
-  if (buf_getint(buf, &l))
+  if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  principal = malloc(l + 1);
-  if (!principal)
-    goto memerr;
-  if (buf_getdata(buf, principal, l))
-    goto badpkt;
-  principal[l]=0;
   rc = krb5_parse_name(sess->kctx, principal, &target);
   if (rc) {
     prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
@@ -1965,9 +1876,6 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
-  goto freeall;
- memerr:
-  send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");

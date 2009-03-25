@@ -107,7 +107,8 @@ void c_close(SSL *ssl) {
 
 char *get_server(char *realm) {
   krb5_context ctx;
-  char *ret=NULL, *intrealm=NULL;
+  static char *ret=NULL;
+  char *intrealm=NULL;
   int i;
 
   if (krb5_init_context(&ctx))
@@ -394,18 +395,14 @@ void c_auth(SSL *ssl, char *hostname) {
              strerror(errno));
      }
              
-     buf_setlength(auth, out.length + 8);
-     reset_cursor(auth);
-               
      f=0;
      if (gss_more_init) f|=AUTHFLAG_MORE;
-     if (buf_putint(auth, f) || 
-	 buf_putint(auth, out.length) ||
-	 buf_putdata(auth,  out.value, out.length)) {
+     if (buf_appendint(auth, f) || 
+	 buf_appendint(auth, out.length) ||
+	 buf_appenddata(auth, out.value, out.length)) {
        c_close(ssl);
        fatal("internal error: cannot pack authentication structure");
      }
-               
      resp = sendrcv(ssl, GSS_ERROR(maj) ? OP_AUTHERR : OP_AUTH, auth);
      if (resp == RESP_ERR || resp == RESP_FATAL) {
        c_close(ssl);
@@ -494,8 +491,10 @@ void c_auth(SSL *ssl, char *hostname) {
   mic=buf_alloc(out.length);
   if (mic == NULL)
     fatal("Cannot allocate memory: %s", strerror(errno));
-  buf_setlength(mic, out.length);
-  buf_putdata(mic, out.value, out.length);
+  if (buf_appenddata(mic, out.value, out.length)) {
+    fatal("internal error: cannot pack authentication structure");
+  }
+  
   resp = sendrcv(ssl, OP_AUTHCHAN, mic);
   if (resp == RESP_ERR || resp == RESP_FATAL) {
    c_close(ssl);
@@ -541,7 +540,6 @@ void c_auth(SSL *ssl, char *hostname) {
 void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts) 
 {
   mb_t buf;
-  size_t curlen;
   int i, resp;
   
   if (nhosts < 1) {
@@ -553,28 +551,17 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
     c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
-  curlen=4 + strlen(princ) + 4 + 4;
-  if (buf_setlength(buf, curlen) ||
-      buf_putint(buf, strlen(princ)) ||
-      buf_putdata(buf, princ, strlen(princ)) ||
-      buf_putint(buf, flag) ||
-      buf_putint(buf, nhosts)) {
+  if (buf_appendstring(buf, princ) ||
+      buf_appendint(buf, flag) ||
+      buf_appendint(buf, nhosts)) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
   for (i=0;i<nhosts;i++) {
-    int l = strlen(hosts[i]);
-    if (buf_setlength(buf, curlen + 4 + l)) {
+    if (buf_appendstring(buf, hosts[i])) {
       c_close(ssl);
       fatal("Cannot extend buffer: %s", strerror(errno));
     } 
-    set_cursor(buf, curlen);
-    if (buf_putint(buf, l) ||
-        buf_putdata(buf, hosts[i], l)) {
-      c_close(ssl);
-      fatal("Internal error: Cannot append to buffer");
-    } 
-    curlen = curlen + 4 + l;
   }
   resp = sendrcv(ssl, OP_NEWREQ, buf);
   if (resp == RESP_ERR) {
@@ -597,9 +584,8 @@ void c_newreq(SSL *ssl, char *princ, int flag, int nhosts, char **hosts)
 
 void c_status(SSL *ssl, char *princ) {
   mb_t buf;
-  unsigned int f, i, n, l, resp, t;
-  char *hostname=NULL, *new;
-  size_t curlen;
+  unsigned int f, i, n, resp, t;
+  char *hostname;
   int kvno;
 
   buf = buf_alloc(4 + strlen(princ));
@@ -607,10 +593,7 @@ void c_status(SSL *ssl, char *princ) {
     c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
-  curlen=4 + strlen(princ);
-  if (buf_setlength(buf, curlen) ||
-      buf_putint(buf, strlen(princ)) ||
-      buf_putdata(buf, princ, strlen(princ))) {
+  if (buf_appendstring(buf, princ)) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
@@ -650,27 +633,17 @@ void c_status(SSL *ssl, char *princ) {
     
   for (i=0; i<n; i++) {
     if (buf_getint(buf, &f) ||
-      buf_getint(buf, &l)) {
-      prtmsg("Server sent malformed reply");
-    }
-    new = realloc(hostname, l + 1);
-    if (!new) {
-      c_close(ssl);
-      fatal("Cannot allocate memory");
-    }
-    hostname=new;
-    if (buf_getdata(buf, hostname, l)) {
-      prtmsg("Server sent malformed reply");
+        buf_getstring(buf, &hostname, malloc)) {
+      prtmsg("Server sent malformed reply (or memory allocation failure)");
       goto out;
-    }   
-    hostname[l]=0;
+    }
     prtmsg("Host %s has%s finished rekeying for this principal",
            hostname, (f & STATUSFLAG_COMPLETE) ? "" : " not");
     if ((f & (STATUSFLAG_COMPLETE|STATUSFLAG_ATTEMPTED)) == STATUSFLAG_ATTEMPTED)
       prtmsg("Host %s has downloaded this key", hostname);
+    free(hostname);
   }
  out:
-  free(hostname);
   buf_free(buf);
 }
 
@@ -682,33 +655,27 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
   krb5_keytab_entry ent;
   krb5_keyblock key;
   krb5_error_code rc;
-  unsigned int l, m, n, i, j, no_send=0, 
+  unsigned int m, n, l, i, j, no_send=0, 
     no_send_single, skip, kvno, et;
-  char *new, *principal=NULL;
+  char *principal=NULL;
   
   memset(&ent, 0, sizeof(ent));
+  reset_cursor(buf);
   
   if (buf_getint(buf, &m)) {
     prtmsg("Server sent malformed reply");
     goto out;
   }
   for (i=0; i < m; i++) {
-    if (buf_getint(buf, &l)) {
-      prtmsg("Server sent malformed reply");
+    if (buf_getstring(buf, &principal, malloc)) {
+      prtmsg("Server sent malformed reply (or memory allocation failed)");
       goto out;
     } 
-    new = realloc(principal, l+1);
-    if (!new) {
-      fatal("Memory allocation failed: %s", strerror(errno));
-    } 
-    principal = new;
-    if (buf_getdata(buf, principal, l) ||
-	buf_getint(buf, &kvno) ||
+    if (buf_getint(buf, &kvno) ||
 	buf_getint(buf, &n)){
       prtmsg("Server sent malformed reply");
       goto out;
     } 
-    principal[l]=0;
     skip=0;
     rc = krb5_parse_name(ctx, principal, &ent.principal);
     if (rc) {
@@ -767,15 +734,15 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
             krb5_free_keytab_entry_contents(ctx, &cmpe);
      
           }
-        }
-        
+        }  
       }
+      
       rc = krb5_copy_keyblock_contents(ctx, &key, kte_keyblock(&ent));
       free(Z_keydata(&key));
       if (rc) {
 	prtmsg("krb5_copy_keyblock_contents failed: %s", krb5_get_err_text(ctx, rc));
 	no_send_single=1;
-	continue;
+    	continue;
       }
       rc = krb5_kt_add_entry(ctx, kt, &ent);
       if (rc) {
@@ -791,10 +758,13 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
     }
     krb5_free_principal(ctx, ent.principal);
     memset(&ent, 0, sizeof(ent));
+    free(principal);
+    principal=NULL;
   }
  out:
   if (ent.principal)
     krb5_free_principal(ctx, ent.principal);
+  free(principal);
   return no_send;
 }
 
@@ -806,14 +776,13 @@ static int g_complete(void *vctx, char *principal, int kvno)
   int resp;
   
   commitbuf=buf_alloc(8 + strlen(principal));
-  if (!commitbuf ||buf_setlength(commitbuf, 8 + strlen(principal))) {
+  if (!commitbuf) {
     c_close(ssl);
     fatal("Internal error: Cannot get new buffer: %s", strerror(errno));
   }
 
-  if (buf_putint(commitbuf, strlen(principal)) ||
-      buf_putdata(commitbuf, principal, strlen(principal)) ||
-      buf_putint(commitbuf, kvno)) {
+  if (buf_appendstring(commitbuf, principal) ||
+      buf_appendint(commitbuf, kvno)) {
     c_close(ssl);
     fatal("Internal error: Cannot append to buffer");
   } 
@@ -888,7 +857,6 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
   krb5_keytab kt=NULL;
   mb_t buf;
   int rc, resp, is_error=0, i;
-  size_t curlen;
 
   buf=buf_alloc(1);
   if (!buf) {
@@ -904,26 +872,16 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
   if (!kt)
     goto out;  
 
-  buf_setlength(buf, 0);
   if (nprincs) {
-    if (buf_setlength(buf, 4) ||
-        buf_putint(buf, nprincs)) {
+    if (buf_appendint(buf, nprincs)) {
         c_close(ssl);
         fatal("Cannot extend buffer: %s", strerror(errno));
     }   
-    curlen=4;
     for (i=0;i<nprincs;i++) {
-      if (buf_setlength(buf, curlen + 4 + strlen(princs[i]))) {
+      if (buf_appendstring(buf, princs[i])) {
         c_close(ssl);
         fatal("Cannot extend buffer: %s", strerror(errno));
       }
-      set_cursor(buf, curlen);
-      if (buf_putint(buf, strlen(princs[i])) ||
-          buf_putdata(buf, princs[i], strlen(princs[i]))) {
-        c_close(ssl);
-        fatal("Cannot extend buffer: %s", strerror(errno));
-      }
-      curlen = curlen + 4 + strlen(princs[i]);
     }   
   }
   resp = sendrcv(ssl, OP_GETKEYS, buf);
@@ -958,17 +916,13 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
 void c_abort(SSL *ssl, char *princ) {
   mb_t buf;
   unsigned int resp;
-  size_t curlen;
 
   buf = buf_alloc(4 + strlen(princ));
   if (!buf) {
     c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
-  curlen=4 + strlen(princ);
-  if (buf_setlength(buf, curlen) ||
-      buf_putint(buf, strlen(princ)) ||
-      buf_putdata(buf, princ, strlen(princ))) {
+  if (buf_appendstring(buf, princ)) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
@@ -993,17 +947,13 @@ void c_abort(SSL *ssl, char *princ) {
 void c_finalize(SSL *ssl, char *princ) {
   mb_t buf;
   unsigned int resp;
-  size_t curlen;
 
   buf = buf_alloc(4 + strlen(princ));
   if (!buf) {
     c_close(ssl);
     fatal("Memory allocation failed: %s", strerror(errno));
   } 
-  curlen=4 + strlen(princ);
-  if (buf_setlength(buf, curlen) ||
-      buf_putint(buf, strlen(princ)) ||
-      buf_putdata(buf, princ, strlen(princ))) {
+  if (buf_appendstring(buf, princ)) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
@@ -1034,7 +984,7 @@ static int count_complete(void *vctx, char *principal, int kvno)
 void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab) 
 {
   mb_t buf;
-  unsigned int resp, m, l;
+  unsigned int resp, m;
   int done, rc;
   krb5_context ctx;
   krb5_keytab kt;
@@ -1057,10 +1007,8 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
   if (!kt)
     goto out;
 
-  if (buf_setlength(buf, 8 + strlen(princ)) ||
-      buf_putint(buf, strlen(princ)) ||
-      buf_putdata(buf, princ, strlen(princ)) ||
-      buf_putint(buf, flag)) {
+  if (buf_appendstring(buf, princ) ||
+      buf_appendint(buf, flag)) {
     c_close(ssl);
     fatal("Cannot extend buffer: %s", strerror(errno));
   } 
@@ -1088,24 +1036,15 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
     goto out;
   }
   
-  if (buf_getint(buf, &l)) {
-    prtmsg("Server sent malformed reply");
+  if (buf_getstring(buf, &principal, malloc)) {
+    prtmsg("Server sent malformed reply (or memory allocation failed)");
     goto out;
   } 
-  principal = realloc(principal, l+1);
-  if (!principal) {
-    fatal("Memory allocation failed: %s", strerror(errno));
-  } 
-  if (buf_getdata(buf, principal, l)) {
-    prtmsg("Server sent malformed reply");
-    goto out;
-  } 
-  principal[l]=0;
   if (strcmp(princ, principal)) {
     prtmsg("Server response was for principal %s, not %s", principal, princ);
     goto out;
   }
-  reset_cursor(buf);
+
   done=0;
   if (process_keys(ctx, kt, buf, count_complete, &done) || done == 0)
     c_abort(ssl, princ);

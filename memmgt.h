@@ -55,9 +55,16 @@ int buf_grow(struct mem_buffer *, size_t);
 
 #define reset_cursor(x) ((x)->cursor = (x)->value)
 #define set_cursor(x, i) ((x)->cursor = &((char *)(x)->value)[i])
+#define get_cursor(x) ((char *)(x)->cursor - (char *)(x)->value)
+#define get_offset(x, p) (p - (char *)(x)->value)
 int buf_putdata(struct mem_buffer *, const void *, const size_t);
+int buf_appenddata(struct mem_buffer *, const void *, const size_t);
 int buf_getdata(struct mem_buffer *, void *, const size_t);
 int buf_putint(struct mem_buffer *, const unsigned int);
+int buf_appendint(struct mem_buffer *, const unsigned int);
 int buf_getint(struct mem_buffer *, unsigned int *);
+int buf_putstring(struct mem_buffer *, const char *);
+int buf_appendstring(struct mem_buffer *, const char *);
+int buf_getstring(struct mem_buffer *, char **, void *(*)(size_t));
 int buf_setlength(struct mem_buffer *, const size_t);
 #endif

@@ -136,14 +136,14 @@ int sess_recv(struct rekey_session *sess, mb_t buf)
 void send_error(struct rekey_session *sess, int errcode, char *msg) 
 {
   mb_t msgbuf;
+  char *eom = "";
 
   msgbuf = buf_alloc(9+strlen(msg));
   if (!msgbuf)
     return;
-  buf_setlength(msgbuf, 9+strlen(msg));
-  if (buf_putint(msgbuf, errcode) ||
-      buf_putint(msgbuf, strlen(msg)) ||
-      buf_putdata(msgbuf, msg, strlen(msg)+1))
+  if (buf_appendint(msgbuf, errcode) ||
+      buf_appendstring(msgbuf, msg) ||
+      buf_appenddata(msgbuf, eom, 1))
     return;
   sess_send(sess, RESP_ERR, msgbuf);
   buf_free(msgbuf);
@@ -152,14 +152,14 @@ void send_error(struct rekey_session *sess, int errcode, char *msg)
 void send_fatal(struct rekey_session *sess, int errcode, char *msg) 
 {
   mb_t msgbuf;
+  char *eom = "";
 
   msgbuf = buf_alloc(9+strlen(msg));
   if (!msgbuf)
     return;
-  buf_setlength(msgbuf,9+strlen(msg));
-  if (buf_putint(msgbuf, errcode) ||
-      buf_putint(msgbuf, strlen(msg)) ||
-      buf_putdata(msgbuf, msg, strlen(msg)+1))
+  if (buf_appendint(msgbuf, errcode) ||
+      buf_appendstring(msgbuf, msg) ||
+      buf_appenddata(msgbuf, eom, 1))
     return;
   sess_send(sess, RESP_FATAL, msgbuf);
   buf_free(msgbuf);
@@ -218,13 +218,12 @@ void send_gss_token(struct rekey_session *sess, int opcode,
     fatal("Cannot authenticate: memory allocation failed: %s",
 	  strerror(errno));
   }
-  buf_setlength(auth, tok->length + 8);
     
   f=0;
   if (gss_more_accept) f|=AUTHFLAG_MORE;
-  if (buf_putint(auth, f) ||
-      buf_putint(auth, tok->length) ||
-      buf_putdata(auth, tok->value, tok->length)) {
+  if (buf_appendint(auth, f) ||
+      buf_appendint(auth, tok->length) ||
+      buf_appenddata(auth, tok->value, tok->length)) {
     send_fatal(sess, ERR_OTHER, "Internal error on server");
     fatal("internal error: cannot pack authentication structure");
   }

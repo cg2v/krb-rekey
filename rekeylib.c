@@ -247,21 +247,12 @@ void prt_err_reply(mb_t resp) {
     prtmsg("Malformed error reply (too short to contain code)");
     return;
   }
-  if (buf_getint(resp, &len)) {
+  if (buf_getstring(resp, &msg, malloc)) {
     prtmsg("Remote error: %d", code);
     prtmsg("Malformed error reply (too short to contain message length)");
     return;
   }
-  msg=malloc(len + 1);
-  if (!msg)
-    fatal("Cannot allocate memory: %s", strerror(errno));
-  msg[len]=0;
-  if (buf_getdata(resp, msg, len)) {
-    prtmsg("Remote error: %d", code);
-    prtmsg("Malformed error reply (too short to contain message length)");
-    free(msg);
-    return;
-  }
+  len = strlen(msg);
   q = msg;
   while (q < &msg[len]) {
     prtmsg("Remote error: %s (%d)", q, code);

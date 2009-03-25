@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <limits.h>
 #include <memory.h>
 #include <netinet/in.h>
 
@@ -68,21 +69,23 @@ static struct mem_buffer_storage *head;
 
 int adjust_mem_buffer_int(struct mem_buffer_storage *buffer, size_t size) {
   void *new;
+  size_t new_size = 64 * ((size + 63) / 64);
+  
   if (size < buffer->buffer.allocated)
     return 0;
   if (buffer->buffer.value == buffer->initial_storage) {
-    new = malloc(size);
+    new = malloc(new_size);
     if (new && 
 	buffer->buffer.length && 
 	buffer->buffer.length < buffer->buffer.allocated)
       memcpy(new, buffer->initial_storage, buffer->buffer.length);
   } else {
-    new = realloc(buffer->buffer.value, size);
+    new = realloc(buffer->buffer.value, new_size);
   }
   if (new == NULL) 
     return 1;
   buffer->buffer.value = new;
-  buffer->buffer.allocated = size;
+  buffer->buffer.allocated = new_size;
   return 0;
 }
 
@@ -112,7 +115,8 @@ struct mem_buffer *buf_alloc(size_t size) {
     else
       head = cur->next;
     cur->next = NULL;
-    return &cur->buffer;
+  cur->buffer.cursor = NULL;
+  return &cur->buffer;
   }
 
   cur=calloc(1, sizeof(struct mem_buffer_storage));
@@ -120,6 +124,7 @@ struct mem_buffer *buf_alloc(size_t size) {
     return NULL;
   cur->buffer.value = cur->initial_storage;
   cur->buffer.allocated = sizeof(cur->initial_storage);
+  cur->buffer.cursor = NULL;
   if (adjust_mem_buffer_int(cur, size)) {
     free(cur);
     return NULL;
@@ -143,17 +148,22 @@ void buf_free(struct mem_buffer *buffer) {
   
 int buf_grow(struct mem_buffer *buffer, size_t size) {
   struct mem_buffer_storage *internal;
-  unsigned char *p, *q, *np;
-  int ret;
+  int ret, offset;
   
-  p=buffer->value;
-  q=buffer->cursor;
+  if (buffer->cursor) {
+    unsigned char *p, *q;
+    p=buffer->value;
+    q=buffer->cursor;
+    offset = q - p;
+  } else
+    offset = -1;
+  
   internal = (struct mem_buffer_storage *)buffer;
   ret = adjust_mem_buffer_int(internal, size);
-  if (ret == 0 && q) {
-    np = buffer->value;
-    q = np + (q - p);
-    buffer->cursor = q;
+  if (ret == 0 && offset >= 0) {
+    unsigned char *p;
+    p = buffer->value;
+    buffer->cursor = p + offset;
   }
   return ret;
 }
@@ -175,8 +185,10 @@ static int buf_checkdata(struct mem_buffer *buffer, const size_t need) {
   p = buffer->value;
   q = buffer->cursor;
   /* check for valid cursor position */
-  if (!q || q < p || q >= p + buffer->length)
+  if (!q || q < p || q > p + buffer->length)
     return 1;
+  if (need == 0)
+    return 0;
   avail = buffer->length - (q - p);
   return (avail < need);
 }
@@ -193,6 +205,39 @@ int buf_putdata(struct mem_buffer *buffer,
 int buf_putint(struct mem_buffer *buffer, const unsigned int data) {
      unsigned int sdata = htonl(data);
      return buf_putdata(buffer, &sdata, 4);
+}
+
+int buf_putstring(struct mem_buffer *buffer, const char * data) {
+  size_t slen = strlen(data);
+  return buf_putint(buffer, slen) || buf_putdata(buffer, data, slen);
+}
+
+int buf_appenddata(struct mem_buffer *buffer, 
+                   const void *data, const size_t datalen) {
+  size_t newlength = buffer->length + datalen;
+
+  /* make sure cursor is valid */
+  if (buffer->cursor == NULL)
+    buffer->cursor = buffer->value;
+  else if (buf_checkdata(buffer, 0))
+    return 1;
+  
+  if (newlength > buffer->allocated) {
+    if (buf_grow(buffer, newlength))
+      return 1;
+  }
+  buffer->length = newlength;
+  return buf_putdata(buffer, data, datalen); /* shouldn't fail. assert? */
+}
+
+int buf_appendint(struct mem_buffer *buffer, const unsigned int data) {
+     unsigned int sdata = htonl(data);
+     return buf_appenddata(buffer, &sdata, 4);
+}
+
+int buf_appendstring(struct mem_buffer *buffer, const char * data) {
+  size_t slen = strlen(data);
+  return buf_appendint(buffer, slen) || buf_appenddata(buffer, data, slen);
 }
 
 int buf_getdata(struct mem_buffer *buffer, 
@@ -212,3 +257,23 @@ int buf_getint(struct mem_buffer *buffer, unsigned int *data) {
      *data = ntohl(sdata);
      return 0;
 }
+
+/* *datap may be valid and allocated even if this function fails! */
+int buf_getstring(struct mem_buffer *buffer, char **datap, 
+                  void *(*alloc)(size_t)) 
+{
+  unsigned int slen;
+  char *ret;
+  *datap=NULL;
+  if (buf_getint(buffer, &slen))
+    return 1;
+  if (slen == UINT_MAX) /* some lower limit could be chosen. Just don't want to overflow the +1 */
+    return 1;
+  ret = alloc(slen + 1);
+  if (!ret)
+    return 1;
+  *datap=ret;
+  ret[slen]=0;
+  return buf_getdata(buffer, ret, slen);
+}
+
