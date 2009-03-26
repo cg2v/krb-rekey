@@ -1,7 +1,8 @@
 AUTOMAKE_OPTIONS=foreign 1.9
 bin_PROGRAMS=rekeymgr
-sbin_PROGRAMS=rekeysrv getnewkeys
+sbin_PROGRAMS=$(SERVER_PROG) getnewkeys
 noinst_PROGRAMS=rekeytest
+EXTRA_PROGRAMS=rekeysrv
 EXTRA_DIST=dhp1024.pem  dhp2048.pem  dhp3072.pem  dhp4096.pem  dhp512.pem \
    dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql
 BUILT_SOURCES=sqlinit.h dhp512.h dhp3072.h

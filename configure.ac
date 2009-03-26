@@ -18,6 +18,8 @@ dnl AC_CHECK_LIB([gssapi_krb5], [gss_init_sec_context], [LIB_GSS=-lgssapi_krb5],
 dnl AC_MSG_ERROR([No GSSAPI library found])])])
 dnl AC_CHECK_LIB([krb5], [krb5_init_context], [LIB_KRB5=-lkrb5],[
 dnl AC_MSG_ERROR([No krb5 library found])])
+AC_ARG_ENABLE(server, AS_HELP_STRING([--enable-server], [build server component (default is no)]),
+	[build_server=$enableval], [build_server=no])
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then
    AC_MSG_ERROR([krb5-config not found. update path or set KRB5CONF before running configure])
@@ -28,14 +30,22 @@ if test "X$LIB_GSS" = "X"; then
    AC_MSG_ERROR([krb5-config does not support GSSAPI])
 fi
 LIB_KRB5=`$KRB5CONF --libs`
-LIB_KADMS=`$KRB5CONF --libs kadm-server`
-AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
-AC_MSG_ERROR([No sqlite library found])])
 AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL=-lssl], [
 AC_MSG_ERROR([No openssl library found])])
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
+
+LIB_SQLITE3=
+LIB_GROUPS=
+LIB_KADMS=
+
+if test "$build_server" = "yes"; then
+LIB_KADMS=`$KRB5CONF --libs kadm-server`
+AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
+AC_MSG_ERROR([No sqlite library found])])
 AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
 AC_MSG_ERROR([No ldap groups library found])])
+AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
+fi
 
 AC_SUBST([LIB_GSS LIB_KRB5 LIB_KADMS LIB_SQLITE3 LIB_SSL LIB_GROUPS])
 
@@ -46,7 +56,9 @@ save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
 AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_krb5.h], [AC_DEFINE([HEADER_GSSAPI_GSSAPI],[],[Define if mit-style gss headers are in use])], [AC_CHECK_HEADERS([gssapi.h],[],[AC_MSG_ERROR([No GSSAPI headers found])])])
 AC_CHECK_HEADERS([krb5/krb5.h],[],[AC_CHECK_HEADERS([krb5.h],[],[AC_MSG_ERROR([No krb5 headers found])])])
+if test "$build_server" = "yes"; then
 AC_CHECK_HEADERS([kadm5/kadm5_err.h])
+fi
 CPPFLAGS="$save_CPPFLAGS"
 
 
@@ -136,6 +148,7 @@ AC_MSG_RESULT([$x_krb5_princ_realm])
 if test X$x_krb5_princ_realm = Xyes; then
   AC_DEFINE([HAVE_KRB5_PRINC_REALM], [], [Define if krb5_princ_realm function/macro is available])
 fi
+if test "$build_server" = "yes"; then
 LIBS="$LIB_KADMS $save_LIBS"
 AC_MSG_CHECKING([for compatible kadm5_init_with_skey_ctx])
 AC_TRY_LINK([#include <kadm5/admin.h>], [krb5_context c = 0;
@@ -183,6 +196,7 @@ if test X$x_kadm5_setkey_principal = Xyes; then
 fi
 if test X$x_kadm5_chpass_principal_with_key != Xyes && test X$x_kadm5_setkey_principal != Xyes; then
 	AC_MSG_ERROR([Cannot figure out how to set keys with kadm library])
+fi
 fi
 
 LIBS="$save_LIBS"
