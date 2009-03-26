@@ -123,6 +123,8 @@ int main(int argc, char **argv) {
     c_abort(conn, targetname);
   } else if (!strcmp(cmd, "finalize")) {
     c_finalize(conn, targetname);
+  } else if (!strcmp(cmd, "delprinc")) {
+    c_delprinc(conn, targetname);
   } else if (!strcmp(cmd, "key")) {
     c_simplekey(conn, targetname, flag, keytab);
   } else {

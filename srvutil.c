@@ -56,6 +56,7 @@
 #define SESS_PRIVATE
 #define NEED_SSL
 #define NEED_KRB5
+#define NEED_KADM5
 #define NEED_SQLITE
 #include "rekeysrv-locl.h"
 #include "rekey-locl.h"
@@ -90,7 +91,15 @@ void sess_finalize(struct rekey_session *sess)
     SSL_shutdown(sess->ssl);
     SSL_free(sess->ssl);
   }
-
+  if (sess->kadm_handle)
+    kadm5_destroy(sess->kadm_handle);
+  if (sess->realm) {
+#if defined(HAVE_KRB5_REALM)
+    krb5_xfree(sess->realm);
+#else
+    krb5_free_default_realm(sess->kctx, sess->realm);
+#endif
+  }
   if (sess->princ)
     krb5_free_principal(sess->kctx, sess->princ);
   if (sess->kctx)
@@ -230,6 +239,52 @@ void send_gss_token(struct rekey_session *sess, int opcode,
     
   sess_send(sess, RESP_AUTH, auth);
   buf_free(auth);
+}
+
+int krealm_init(struct rekey_session *sess) {
+  int rc;
+  char *realm=NULL;  
+  if (sess->realm) {
+    return 0;
+  }
+  rc=krb5_get_default_realm(sess->kctx, &realm);
+  if (rc) {
+    prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
+    return rc;
+  }
+  sess->realm = realm;
+  return 0;
+}
+
+int kadm_init(struct rekey_session *sess) 
+{
+  void *kadm_handle=NULL;
+  kadm5_config_params kadm_param;
+  int rc;
+
+  rc = krealm_init(sess);
+  if (rc)
+    return rc;
+
+  kadm_param.mask = KADM5_CONFIG_REALM;
+  kadm_param.realm = sess->realm;
+
+#ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
+  rc = kadm5_init_with_skey_ctx(sess->kctx, 
+			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+			    &kadm_param, KADM5_STRUCT_VERSION, 
+			    KADM5_API_VERSION_2, &kadm_handle);
+#else
+  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+			    &kadm_param, KADM5_STRUCT_VERSION, 
+			    KADM5_API_VERSION_2, NULL, &kadm_handle);
+#endif
+  if (rc) {
+    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
+    return rc;
+  }
+   sess->kadm_handle = kadm_handle;
+  return 0;
 }
 
 #include "sqlinit.h"

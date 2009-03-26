@@ -123,8 +123,15 @@
   4 bytes of principal name length
   N bytes of principal name
 */
+/* delete a principal that does not have an in-progress rekey */
+/* requires admin authorization */
+#define OP_DELPRINC 11
+/* data is principal name
+  4 bytes of principal name length
+  N bytes of principal name
+*/
 
-#define MAX_OPCODE OP_FINALIZE
+#define MAX_OPCODE OP_DELPRINC
 
 #define RESP_AUTH 128
 /* data is flags, gss context token

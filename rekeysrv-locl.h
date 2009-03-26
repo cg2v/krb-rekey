@@ -40,6 +40,14 @@
 #endif
 #endif
 
+#ifdef NEED_KADM5
+#define USE_KADM5_API_VERSION 2
+#include <kadm5/admin.h>
+#ifdef HAVE_KADM5_KADM5_ERR_H
+#include <kadm5/kadm5_err.h>
+#endif
+#endif
+
 #ifdef NEED_GSSAPI
 #ifdef HEADER_GSSAPI_GSSAPI
 #include <gssapi/gssapi.h>
@@ -79,6 +87,8 @@ struct rekey_session {
   int is_admin;
   int is_host;
   sqlite3 *dbh;
+  char *realm;
+  void *kadm_handle;
 };
 #define REKEY_SESSION_LISTENING 0
 #define REKEY_SESSION_SENDING 1
@@ -113,6 +123,8 @@ int sql_init(struct rekey_session *);
 int sql_begin_trans(struct rekey_session *);
 int sql_commit_trans(struct rekey_session *);
 int sql_rollback_trans(struct rekey_session *);
+int krealm_init(struct rekey_session *);
+int kadm_init(struct rekey_session *);
 
 void fatal(const char *, ...);
 void prtmsg(const char *, ...);

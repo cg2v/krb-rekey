@@ -59,6 +59,7 @@
 
 #define SESS_PRIVATE
 #define NEED_KRB5
+#define NEED_KADM5
 #define NEED_GSSAPI
 #define NEED_SQLITE
 #include "rekeysrv-locl.h"
@@ -68,12 +69,6 @@
 
 #ifdef HEADER_GSSAPI_GSSAPI
 #include <gssapi/gssapi_krb5.h>
-#endif
-
-#define USE_KADM5_API_VERSION 2
-#include <kadm5/admin.h>
-#ifdef HAVE_KADM5_KADM5_ERR_H
-#include <kadm5/kadm5_err.h>
 #endif
 
 static krb5_enctype des_enctypes[] = {
@@ -153,7 +148,7 @@ static int in_admin_group(const char *username)
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {
-  char *realm;
+  size_t rl;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm, *c1, *c2, *c3;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
@@ -162,13 +157,15 @@ static void check_authz(struct rekey_session *sess)
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
-  if (krb5_get_default_realm(sess->kctx, &realm))
+  if (krealm_init(sess))
     return;
+  rl = strlen(sess->realm);
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 
   princ_realm = krb5_principal_get_realm(sess->kctx, sess->princ); 
-  if (!princ_realm || strncmp(princ_realm , realm, strlen(realm)))
-     goto out;
+  if (!princ_realm || rl != strlen(princ_realm) ||
+      strncmp(princ_realm , sess->realm, rl))
+    return;
   c1 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 0);
   c2 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 1);
   c3 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 2);
@@ -180,7 +177,7 @@ static void check_authz(struct rekey_session *sess)
       strcpy(sess->hostname, c2);
     else /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
-    goto out;
+    return;
   }
   
   if (c1 && c2 && !c3 && !memcmp(c2, "admin", 5) &&
@@ -188,15 +185,14 @@ static void check_authz(struct rekey_session *sess)
     sess->is_admin = 1;
   }
 
- out:
-  krb5_xfree(realm);
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
 
   princ_realm = krb5_princ_realm(sess->kctx, sess->princ); 
-  if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm)))
-     goto out;
+  if (!princ_realm || rl != princ_realm->length ||
+      strncmp(princ_realm->data , sess->realm, rl))
+    return;
   if (krb5_princ_size(sess->kctx, sess->princ) != 2)
-    goto out;
+    return;
   c1 = krb5_princ_component(sess->kctx, sess->princ, 0);
   c2 = krb5_princ_component(sess->kctx, sess->princ, 1);
 
@@ -209,22 +205,19 @@ static void check_authz(struct rekey_session *sess)
       sess->hostname[c2->length]=0;
     } else /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
-    goto out;
+    return;
   }
   
   if (c2->length == 5 && !strncmp(c2->data, "admin", 5)) {
     username=malloc(c1->length + 1);
     if (!username)
-      goto out;
+      return;
     memcpy(username, c1->data, c1->length);
     username[c1->length]=0;
     if (in_admin_group(username))
       sess->is_admin = 1;
     free(username);
   }
-
- out:
-  krb5_free_default_realm(sess->kctx, realm);
 #endif
 }
 
@@ -237,7 +230,7 @@ static void check_authz(struct rekey_session *sess)
 static int check_target(struct rekey_session *sess, krb5_principal target) 
 {
   int ret=1;
-  char *realm;
+  size_t rl;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm;
   const char  *c1, *c2;
@@ -246,13 +239,14 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
   krb5_data *c1, *c2;
 #endif
 
-  if (krb5_get_default_realm(sess->kctx, &realm))
+  if (krealm_init(sess))
     return ret;
-  
+  rl = strlen(sess->realm);
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 
   princ_realm = krb5_principal_get_realm(sess->kctx, target); 
-  if (!princ_realm || strncmp(princ_realm , realm, strlen(realm))) {
+  if (!princ_realm || rl != strlen(princ_realm) ||
+      strncmp(princ_realm , sess->realm, rl)) {
     send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
     goto out;
   }
@@ -279,11 +273,11 @@ badprinc:
   ret=0;
   
  out:
-  krb5_xfree(realm);
 #elif defined(KRB5_PRINCIPAL_MIT_STYLE)
 
   princ_realm = krb5_princ_realm(sess->kctx, target); 
-  if (!princ_realm || strncmp(princ_realm->data , realm, strlen(realm))) {
+  if (!princ_realm || rl != princ_realm->length ||
+      strncmp(princ_realm->data , sess->realm, rl)) {
     send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
     goto out;
   }
@@ -318,14 +312,13 @@ badprinc:
 #endif
   ret=0;
  out:
-  krb5_free_default_realm(sess->kctx, realm);
 #endif
   return ret;
 }
 
 /* lookup a principal in the local database, and return its id and kvno if
    requested */
-static int find_principal(struct rekey_session *sess, char *principal, sqlite_int64 *princid, int *kvno) 
+static int find_principal(struct rekey_session *sess, char *principal, sqlite_int64 *princid, krb5_kvno *kvno) 
 {
   sqlite3_stmt *getprinc=NULL;  
   int rc, match;
@@ -367,14 +360,12 @@ static int find_principal(struct rekey_session *sess, char *principal, sqlite_in
    gets the new kvno by looking up the old one in the kdb and incrementing it.
    Optionally creates the kdb entry if it does not exist */
 static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal, 
-                                    krb5_principal target, int create, int *kvnop) 
+                                    krb5_principal target, int create, krb5_kvno *kvnop) 
 {
   int rc;
-  struct sqlite3_stmt *ins;
-  int kvno, match;
-  void *kadm_handle=NULL;
-  kadm5_config_params kadm_param;
-  char *realm=NULL;
+  struct sqlite3_stmt *ins=NULL;
+  krb5_kvno kvno;
+  int match, created=0;
   kadm5_principal_ent_rec ke;
   sqlite_int64 princid=0;
 
@@ -387,41 +378,42 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
     goto freeall;
   }
 
-  rc=krb5_get_default_realm(sess->kctx, &realm);
-  if (rc) {
-    prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
+  if (kadm_init(sess))
     goto interr;
-  }
-
-  kadm_param.mask = KADM5_CONFIG_REALM;
-  kadm_param.realm = realm;
   memset(&ke, 0, sizeof(ke));
-#ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
-  rc = kadm5_init_with_skey_ctx(sess->kctx, 
-			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, &kadm_handle);
-#else
-  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, NULL, &kadm_handle);
-#endif
-  if (rc) {
-    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
 
-  rc = kadm5_get_principal(kadm_handle, target, &ke, KADM5_KVNO);
+ retry:
+  rc = kadm5_get_principal(sess->kadm_handle, target, &ke, KADM5_KVNO);
   if (rc) {
     if (rc == KADM5_UNK_PRINC) {
-      if (create) {
+      if (create && !created) {
+	ke.principal = target;
+	ke.princ_expire_time = time(0);
+	ke.attributes = KRB5_KDB_DISALLOW_ALL_TIX | KRB5_KDB_NEW_PRINC;
+	rc = kadm5_create_principal(sess->kadm_handle, &ke, 
+				    KADM5_PRINCIPAL | 
+				    KADM5_PRINC_EXPIRE_TIME | KADM5_ATTRIBUTES,
+				    "passwordisnotused");
+	memset(&ke, 0, sizeof(ke));
+	if (rc) {
+	  prtmsg("Cannot create principal %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+	  goto interr;
+	}
+	created=1;
+	goto retry;
       } else {
-        prtmsg("Principal %s does not exist", principal);
-        send_error(sess, ERR_NOTFOUND, "Requested principal does not exist");
+	if (created) {
+	  prtmsg("Principal %s still does not exist after successful kadm5_create_principal", principal);
+	  send_error(sess, ERR_OTHER, "KDC error: Requested principal does not exist after being created");
+	} else {
+	  prtmsg("Principal %s does not exist", principal);
+	  send_error(sess, ERR_NOTFOUND, "Requested principal does not exist");
+	}
         goto freeall;
       }
     } else {
-      prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
+      prtmsg("Unable to lookup principal %s: %s", principal, 
+	     krb5_get_err_text(sess->kctx, rc));
       goto interr;
     }
     
@@ -457,17 +449,9 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
  freeall:
   if (ins)
     sqlite3_finalize(ins);
-  if (kadm_handle) {
-    kadm5_free_principal_ent(kadm_handle, &ke);
-    kadm5_destroy(kadm_handle);
-  }
-  if (realm) {
-#if defined(HAVE_KRB5_REALM)
-    krb5_xfree(realm);
-#else
-    krb5_free_default_realm(sess->kctx, realm);
-#endif
-  }
+  if (sess->kadm_handle)
+    kadm5_free_principal_ent(sess->kadm_handle, &ke);
+  sess->kadm_handle = NULL;
 
   return princid;
 }
@@ -527,7 +511,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int d
 }
 
 /* Adds a keyset to a partially initialized KEYS response */
-static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int kvno, mb_t buf) 
+static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t buf) 
 {
   int rc;
   sqlite3_stmt *st;
@@ -598,7 +582,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, int 
 /* Set up the object used by the kadmin api for storing keys. This
    differs between mit and heimdal. */
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
-static int prepare_kadm_key(krb5_key_data *k, int kvno, int enctype, int keylen,
+static int prepare_kadm_key(krb5_key_data *k, krb5_kvno kvno, int enctype, int keylen,
 		   const unsigned char *keydata) {
   k->key_data_ver = 1;
   k->key_data_kvno = kvno;
@@ -611,7 +595,7 @@ static int prepare_kadm_key(krb5_key_data *k, int kvno, int enctype, int keylen,
   return 0;
 }
 #else
-static int prepare_kadm_key(krb5_keyblock *k, int kvno, int enctype, int keylen,
+static int prepare_kadm_key(krb5_keyblock *k, krb5_kvno kvno, int enctype, int keylen,
 		   const unsigned char *keydata) {
   Z_enctype(k)=enctype;
   Z_keylen(k)=keylen;
@@ -669,13 +653,10 @@ static int do_purge(struct rekey_session *sess, sqlite_int64 princid)
    to help debugging */
 static int do_finalize_req(struct rekey_session *sess, int no_send, 
 			   char *principal, sqlite_int64 princid, 
-			   krb5_principal target, int kvno) {
+			   krb5_principal target, krb5_kvno kvno) {
   sqlite3_stmt *updmsg=NULL, *selkey=NULL;
   int dbaction=0, rc, ret=1;
   unsigned int nk=0, enctype, keylen, i;
-  char *realm=NULL;
-  kadm5_config_params kadm_param;
-  void *kadm_handle;
   kadm5_principal_ent_rec ke;
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
   krb5_key_data *k=NULL, *newk;
@@ -694,31 +675,13 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
   rc = sqlite3_bind_int64(updmsg, 2, princid);
   if (rc != SQLITE_OK)
     goto dberr;
-  
-  rc=krb5_get_default_realm(sess->kctx, &realm);
-  if (rc) {
-    prtmsg("Unable to get default realm: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
-  kadm_param.mask = KADM5_CONFIG_REALM;
-  kadm_param.realm = realm;
-  memset(&ke, 0, sizeof(ke));
-#ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
-  rc = kadm5_init_with_skey_ctx(sess->kctx, 
-			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, &kadm_handle);
-#else
-  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
-			    &kadm_param, KADM5_STRUCT_VERSION, 
-			    KADM5_API_VERSION_2, NULL, &kadm_handle);
-#endif
-  if (rc) {
-    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
-    goto interr;
-  }
 
-  rc = kadm5_get_principal(kadm_handle, target, &ke, KADM5_KVNO);
+  if (kadm_init(sess))
+    goto interr;
+  memset(&ke, 0, sizeof(ke));
+
+  rc = kadm5_get_principal(sess->kadm_handle, target, &ke, KADM5_KVNO | 
+			   KADM5_ATTRIBUTES | KADM5_PRINC_EXPIRE_TIME);
   if (rc) {
     if (rc == KADM5_UNK_PRINC) {
       prtmsg("Principal %s disappeared from kdc", principal);
@@ -732,7 +695,8 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
         send_error(sess, ERR_OTHER, "Principal disappeared from kdc");
       goto freeall;
     }
-    prtmsg("Unable to initialize kadm5 library: %s", krb5_get_err_text(sess->kctx, rc));
+    prtmsg("Unable to lookup principal %s: %s", principal, 
+	   krb5_get_err_text(sess->kctx, rc));
     goto interr;
   }
 
@@ -791,16 +755,16 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     goto interr;
   }
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
-  rc = kadm5_chpass_principal_with_key(kadm_handle, target, nk, k);
+  rc = kadm5_chpass_principal_with_key(sess->kadm_handle, target, nk, k);
 #else
-  rc = kadm5_setkey_principal(kadm_handle, target, k, nk);
+  rc = kadm5_setkey_principal(sess->kadm_handle, target, k, nk);
 #endif
   if (rc) {
-    prtmsg("finalizing %s failed to update kdc: %s", 
+    prtmsg("finalizing %s failed to update kdc with keys: %s", 
 	   krb5_get_err_text(sess->kctx, rc));
     
-    rc = sqlite3_bind_text(updmsg, 2, "updating kdc failed", 
-			   strlen("updating kdc failed"), 
+    rc = sqlite3_bind_text(updmsg, 2, "setting keys in kdc failed", 
+			   strlen("setting keys in kdc failed"), 
 			   SQLITE_STATIC);
     if (rc != SQLITE_OK) {
       sqlite3_step(updmsg); /* finalize in freeall */
@@ -808,6 +772,31 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     if (no_send == 0)
       send_error(sess, ERR_OTHER, "Updating kdc failed");
     goto freeall;
+  }
+  if (ke.princ_expire_time && ke.kvno == 1 &&
+      ke.attributes == (KRB5_KDB_DISALLOW_ALL_TIX | KRB5_KDB_NEW_PRINC)) {
+    /* looks like a principal that we created. unlock it now
+       that it has a useful key */
+    ke.principal = target;
+    ke.princ_expire_time = 0;
+    ke.attributes = 0;
+    rc = kadm5_modify_principal(sess->kadm_handle, &ke, 
+				KADM5_PRINC_EXPIRE_TIME | KADM5_ATTRIBUTES);
+    ke.principal = NULL;
+    if (rc) {
+      prtmsg("finalizing %s failed to unlock new principal: %s", 
+	     krb5_get_err_text(sess->kctx, rc));
+      
+      rc = sqlite3_bind_text(updmsg, 2, "unlocking principal on kdc failed", 
+			     strlen("unlocking principal on kdc failed"), 
+			     SQLITE_STATIC);
+      if (rc != SQLITE_OK) {
+	sqlite3_step(updmsg); /* finalize in freeall */
+      }
+      if (no_send == 0)
+	send_error(sess, ERR_OTHER, "Updating kdc failed");
+      goto freeall;
+    }
   }
   rc = sqlite3_bind_text(updmsg, 2, "kdc update succeeded", 
                          strlen("kdc update succeeded"), 
@@ -858,15 +847,9 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
 #endif
     }
   }
-  if (kadm_handle)
-    kadm5_destroy(kadm_handle);
-  if (realm) {
-#if defined(HAVE_KRB5_REALM)
-    krb5_xfree(realm);
-#else
-    krb5_free_default_realm(sess->kctx, realm);
-#endif
-  }
+  if (sess->kadm_handle)
+    kadm5_destroy(sess->kadm_handle);
+  sess->kadm_handle = NULL;
   return ret;
 }
 
@@ -986,7 +969,9 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
     /* check for oid length, valid oid tag, and correct oid length. 
        (this isn't really general - a sufficiently long oid would break this,
        even if valid) */
-    if (outname.length < 4 + oidl || *p++ != 0x6 || *p >= 0x80 || *p++ != oidl - 2 ) {
+    if (outname.length < oidl + 4 || 
+	*p++ != 0x6 || *p >= 0x80 || 
+	*p++ != oidl - 2 ) {
       send_fatal(sess, ERR_AUTHN, "Cannot parse authenticated name (it is not a valid exported name)");
       fatal("Cannot parse authenticated name (it is not a valid exported name)");
     }
@@ -1179,8 +1164,8 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   char *principal=NULL, *unp;
   char **hostnames=NULL;
   int desonly;
-  unsigned int n, flag;
-  int i, rc;
+  unsigned int i, n, flag;
+  int rc;
   sqlite3_stmt *ins=NULL;
   int dbaction=0;
   sqlite_int64 princid;
@@ -1205,7 +1190,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-    #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
     krb5_xfree(unp);
 #else
     krb5_free_unparsed_name(sess->kctx, unp);
@@ -1321,7 +1306,8 @@ static void s_status(struct rekey_session *sess, mb_t buf)
   char *principal = NULL;
   const char *hostname=NULL;
   unsigned int f, n;
-  int rc, kvno;
+  int rc;
+  krb5_kvno kvno;
 
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
@@ -1406,13 +1392,14 @@ static void s_status(struct rekey_session *sess, mb_t buf)
    add to its keytab. Produces a KEYS response if successful */
 static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
-  int i, m, rc;
+  int m, rc;
   sqlite3_stmt *st, *updatt, *updcount;
   sqlite_int64 principal;
   const char *pname;
   char **names=NULL;
-  unsigned int n;
-  int kvno, dbaction=0;
+  unsigned int i, n;
+  krb5_kvno kvno;
+  int dbaction=0;
     
   if (sess->is_host == 0) {
     send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
@@ -1495,7 +1482,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     if (buf_appendstring(buf, pname) || 
 	buf_appendint(buf, kvno))
       goto memerr;
-    if (add_keys_one(sess, principal, kvno, buf))
+    if (add_keys_one(sess, principal, buf))
       goto freeall;
 
     m++;
@@ -1567,7 +1554,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
   sqlite_int64 princid;
-  unsigned int kvno, no_send = 0;
+  krb5_kvno kvno;
+  int no_send = 0;
   char *principal = NULL;
   int dbaction=0, rc, match;
   krb5_principal target=NULL;
@@ -1712,7 +1700,8 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   char *principal=NULL;
   int desonly;
   unsigned int flag;
-  int rc, kvno;
+  int rc;
+  krb5_kvno kvno;
   int dbaction=0;
   sqlite_int64 princid;
   krb5_principal target=NULL;
@@ -1750,7 +1739,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     goto dberrnomsg;
   dbaction=-1;
   
-  princid = setup_principal(sess, principal, target, 0, &kvno);
+  princid = setup_principal(sess, principal, target, 1, &kvno);
   if (princid == 0)
     goto freeall;
 
@@ -1762,7 +1751,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
       buf_appendstring(buf, principal) || buf_appendint(buf, kvno))
     goto interr;
 
-  if (add_keys_one(sess, princid, kvno, buf))
+  if (add_keys_one(sess, princid, buf))
     goto freeall;
   dbaction=1;
   sess_send(sess, RESP_KEYS, buf);
@@ -1830,7 +1819,8 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
 {
   char *principal = NULL;
   sqlite_int64 princid;
-  int rc, match, kvno;
+  int rc, match;
+  krb5_kvno kvno;
   krb5_principal target=NULL;
 
   if (sess->is_admin == 0) {
@@ -1884,6 +1874,91 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
     krb5_free_principal(sess->kctx, target);  
   free(principal);
 }
+
+static void s_delprinc(struct rekey_session *sess, mb_t buf)
+{
+  char *principal = NULL, *unp;
+  sqlite_int64 princid;
+  int rc, match;
+  krb5_kvno kvno;
+  krb5_principal target=NULL;
+
+  if (sess->is_admin == 0) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    return;
+  }
+
+  if (buf_getstring(buf, &principal, malloc))
+    goto badpkt;
+
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  rc=krb5_unparse_name(sess->kctx, target, &unp);
+  if (rc) {
+    prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  } 
+  if (strcmp(unp, principal)) {
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+    krb5_xfree(unp);
+#else
+    krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+    send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    goto freeall;
+  }
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+  krb5_xfree(unp);
+#else
+  krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+
+
+  if (sql_init(sess))
+    goto dberrnomsg;
+
+  match = find_principal(sess, principal, &princid, &kvno);
+  if (match < 0)
+    goto dberr;
+
+  if (match > 0) {
+    send_error(sess, ERR_OTHER, "Requested principal is being rekeyed; cannot delte now");
+    goto freeall;
+  }
+  if (kadm_init(sess))
+    goto interr;
+  rc = kadm5_delete_principal(sess->kadm_handle, target);
+  if (rc) {
+    if (rc == KADM5_UNK_PRINC) {
+      prtmsg("Principal %s does not exist", principal);
+      send_error(sess, ERR_NOTFOUND, "Requested principal does not exist");
+      goto freeall;
+    }
+    prtmsg("Unable to lookup principal %s: %s", principal, 
+	   krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  }
+  sess_send(sess, RESP_OK, NULL);
+ dberr:
+  prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
+ dberrnomsg:
+  send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
+ badpkt:
+  send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+ freeall:  
+  if (target)
+    krb5_free_principal(sess->kctx, target);  
+  free(principal);
+}
 static void (*func_table[])(struct rekey_session *, mb_t) = {
   NULL,
   s_auth,
@@ -1895,7 +1970,8 @@ static void (*func_table[])(struct rekey_session *, mb_t) = {
   s_commitkey,
   s_simplekey,
   s_abortreq,
-  s_finalize
+  s_finalize,
+  s_delprinc
 };
 
 void run_session(int s) {

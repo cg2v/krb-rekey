@@ -314,7 +314,7 @@ int sendrcv(SSL *ssl, int opcode, mb_t data) {
   ret=do_recv(ssl, data);
   if (ret == -1) {
      c_close(ssl);
-     fatal("Connection closed");
+     fatal("Unexpected server failure: connection closed");
   }
   return ret;
 }
@@ -1056,5 +1056,35 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
   if (ctx)
     krb5_free_context(ctx);
   free(principal);
+  buf_free(buf);
+}
+
+void c_delprinc(SSL *ssl, char *princ) {
+  mb_t buf;
+  unsigned int resp;
+
+  buf = buf_alloc(4 + strlen(princ));
+  if (!buf) {
+    c_close(ssl);
+    fatal("Memory allocation failed: %s", strerror(errno));
+  } 
+  if (buf_appendstring(buf, princ)) {
+    c_close(ssl);
+    fatal("Cannot extend buffer: %s", strerror(errno));
+  } 
+  resp = sendrcv(ssl, OP_DELPRINC, buf);
+  if (resp == RESP_ERR) {
+    prt_err_reply(buf);
+    goto out;
+  }
+  if (resp == RESP_FATAL) {
+    prt_err_reply(buf);
+    c_close(ssl);
+    exit(1);
+  }
+  if (resp != RESP_OK) {
+    prtmsg("Unexpected reply type %d from server", resp);
+  }
+ out:
   buf_free(buf);
 }
