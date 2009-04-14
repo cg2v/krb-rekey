@@ -56,6 +56,7 @@ save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
 AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_krb5.h], [AC_DEFINE([HEADER_GSSAPI_GSSAPI],[],[Define if mit-style gss headers are in use])], [AC_CHECK_HEADERS([gssapi.h],[],[AC_MSG_ERROR([No GSSAPI headers found])])])
 AC_CHECK_HEADERS([krb5/krb5.h],[],[AC_CHECK_HEADERS([krb5.h],[],[AC_MSG_ERROR([No krb5 headers found])])])
+AC_CHECK_HEADERS([com_err.h],[],[AC_CHECK_HEADERS([et/com_err.h],[],[no_com_err=yes])])
 if test "$build_server" = "yes"; then
 AC_CHECK_HEADERS([kadm5/kadm5_err.h])
 fi
@@ -118,12 +119,22 @@ AC_CHECK_TYPES([krb5_realm], , , [#ifdef HAVE_KRB5_KRB5_H
 #else
 #include <krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry])
-AC_CHECK_DECLS([krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry],[],[],[#ifdef HAVE_KRB5_KRB5_H
+AC_CHECK_FUNCS([krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree])
+AC_CHECK_DECLS([krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree],[],[],[#ifdef HAVE_KRB5_KRB5_H
 #include <krb5/krb5.h>
 #else
 #include <krb5.h>
 #endif])
+LIB_COM_ERR=
+if test "X$ac_cv_func_krb5_get_err_text" = "Xno"; then
+   if test "X$have_com_err" = "Xno"; then
+      AC_MSG_ERROR([No com_err headers found, and krb5 doesn't provide krb5_get_err_text])
+   else
+      AC_CHECK_LIB([com_err], [error_message], [LIB_COM_ERR=-lcom_err], [AC_MSG_ERROR([No com_err library found, and krb5 doesn't provide krb5_get_err_text])])
+   fi
+fi
+AC_SUBST([LIB_COM_ERR])
+
 AC_MSG_CHECKING([for krb5_princ_component])
 AC_TRY_LINK([#ifdef HAVE_KRB5_KRB5_H
 #include <krb5/krb5.h>

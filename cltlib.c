@@ -52,6 +52,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <ctype.h>
+#include <limits.h>
 /* gnulib */
 #include "getaddrinfo.h"
 #ifdef HAVE_KRB5_KRB5_H
@@ -166,7 +167,13 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 #endif
 
 #ifndef HAVE_KRB5_GET_ERR_TEXT
+#ifdef HAVE_COM_ERR_H
 #include <com_err.h>
+#else
+#ifdef HAVE_ET_COM_ERR_H
+#include <et/com_err.h>
+#endif
+#endif
 #define krb5_get_err_text(c, r) error_message(r)
 #endif
 
