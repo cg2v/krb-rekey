@@ -380,15 +380,18 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 
   if (kadm_init(sess))
     goto interr;
-  memset(&ke, 0, sizeof(ke));
 
  retry:
-  rc = kadm5_get_principal(sess->kadm_handle, target, &ke, KADM5_KVNO);
+  memset(&ke, 0, sizeof(ke));
+  rc = kadm5_get_principal(sess->kadm_handle, target, &ke, KADM5_KVNO | 
+			   KADM5_ATTRIBUTES | KADM5_PRINC_EXPIRE_TIME); 
   if (rc) {
     if (rc == KADM5_UNK_PRINC) {
       if (create && !created) {
+	krb5_keyblock *new_keys = NULL;
+	int i, n_new_keys=0;
 	ke.principal = target;
-	ke.princ_expire_time = time(0);
+	ke.princ_expire_time = 0;
 	ke.attributes = KRB5_KDB_DISALLOW_ALL_TIX | KRB5_KDB_NEW_PRINC;
 	rc = kadm5_create_principal(sess->kadm_handle, &ke, 
 				    KADM5_PRINCIPAL | 
@@ -400,6 +403,33 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 	  goto interr;
 	}
 	created=1;
+
+	rc = kadm5_randkey_principal(sess->kadm_handle, target, &new_keys, 
+				     &n_new_keys);
+	if (rc) {
+	  prtmsg("Creating %s failed to randomize keys: %s", principal, 
+		 krb5_get_err_text(sess->kctx, rc));
+	  goto interr;
+	}
+	for (i=0; i< n_new_keys; i++)
+	  krb5_free_keyblock_contents(sess->kctx, &new_keys[i]);
+#ifdef HAVE_KRB5_XFREE
+	krb5_xfree(new_keys);
+#else
+	/* This is evil, but there's no other way to free this
+	   object using the kadmin library's free */
+	kadm5_free_name_list(sess->kadm_handle, (char **)new_keys, 0);
+#endif
+	ke.principal = target;
+	ke.princ_expire_time = 0;
+	ke.attributes = 0;
+	rc = kadm5_modify_principal(sess->kadm_handle, &ke, 
+				    KADM5_PRINC_EXPIRE_TIME | KADM5_ATTRIBUTES);
+	if (rc) {
+	  prtmsg("Creating %s failed to unlock new principal: %s", principal, 
+		 krb5_get_err_text(sess->kctx, rc));
+	  goto interr;
+	}
 	goto retry;
       } else {
 	if (created) {
@@ -416,7 +446,13 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 	     krb5_get_err_text(sess->kctx, rc));
       goto interr;
     }
-    
+  }
+  if ((ke.princ_expire_time && 
+       ke.princ_expire_time < time(0)) || 
+      (ke.attributes & KRB5_KDB_DISALLOW_ALL_TIX)) {
+    prtmsg("Principal %s is disabled or expired (%ld %#lx)", principal,
+	   (long)ke.princ_expire_time, (long)ke.attributes);
+    send_error(sess, ERR_NOTFOUND, "Requested principal is disabled or expired");
   }
   kvno = ke.kvno + 1;
 
@@ -688,7 +724,7 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
       rc = sqlite3_bind_text(updmsg, 2, "Principal disappeared from kdc", 
 			     strlen("Principal disappeared from kdc"), 
 			     SQLITE_STATIC);
-      if (rc != SQLITE_OK) {
+      if (rc == SQLITE_OK) {
 	sqlite3_step(updmsg); /* finalize in freeall */
       }
       if (no_send == 0)
@@ -705,7 +741,7 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     rc = sqlite3_bind_text(updmsg, 2, "Principal's kvno changed on kdc", 
 			   strlen("Principal's kvno changed on kdc"), 
 			   SQLITE_STATIC);
-    if (rc != SQLITE_OK) {
+    if (rc == SQLITE_OK) {
       sqlite3_step(updmsg); /* finalize in freeall */
     }
     if (no_send == 0)
@@ -766,46 +802,21 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     rc = sqlite3_bind_text(updmsg, 2, "setting keys in kdc failed", 
 			   strlen("setting keys in kdc failed"), 
 			   SQLITE_STATIC);
-    if (rc != SQLITE_OK) {
+    if (rc == SQLITE_OK) {
       sqlite3_step(updmsg); /* finalize in freeall */
     }
     if (no_send == 0)
       send_error(sess, ERR_OTHER, "Updating kdc failed");
     goto freeall;
   }
-  if (ke.princ_expire_time && ke.kvno == 1 &&
-      ke.attributes == (KRB5_KDB_DISALLOW_ALL_TIX | KRB5_KDB_NEW_PRINC)) {
-    /* looks like a principal that we created. unlock it now
-       that it has a useful key */
-    ke.principal = target;
-    ke.princ_expire_time = 0;
-    ke.attributes = 0;
-    rc = kadm5_modify_principal(sess->kadm_handle, &ke, 
-				KADM5_PRINC_EXPIRE_TIME | KADM5_ATTRIBUTES);
-    ke.principal = NULL;
-    if (rc) {
-      prtmsg("finalizing %s failed to unlock new principal: %s", 
-	     krb5_get_err_text(sess->kctx, rc));
-      
-      rc = sqlite3_bind_text(updmsg, 2, "unlocking principal on kdc failed", 
-			     strlen("unlocking principal on kdc failed"), 
-			     SQLITE_STATIC);
-      if (rc != SQLITE_OK) {
-	sqlite3_step(updmsg); /* finalize in freeall */
-      }
-      if (no_send == 0)
-	send_error(sess, ERR_OTHER, "Updating kdc failed");
-      goto freeall;
-    }
-  }
   rc = sqlite3_bind_text(updmsg, 2, "kdc update succeeded", 
                          strlen("kdc update succeeded"), 
                          SQLITE_STATIC);
-  if (rc != SQLITE_OK) {
+  if (rc == SQLITE_OK) {
     sqlite3_step(updmsg);
-    sqlite3_finalize(updmsg);
-    updmsg=NULL;
   }
+  sqlite3_finalize(updmsg);
+  updmsg=NULL;
 
   if (sql_begin_trans(sess))
     goto dberr;
@@ -1862,6 +1873,7 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
   if (do_finalize_req(sess, 0, principal, princid, target, kvno))
     goto freeall;
   sess_send(sess, RESP_OK, NULL);
+  goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
@@ -1944,6 +1956,7 @@ static void s_delprinc(struct rekey_session *sess, mb_t buf)
     goto interr;
   }
   sess_send(sess, RESP_OK, NULL);
+  goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
