@@ -19,8 +19,8 @@ rekeysrv_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQL
 
 %.h: %.pem
 	openssl dhparam -C -noout -in $< | sed 's/^DH \*get_dh/static DH *get_dh/' > $@
-sqlinit.h: sqlembed.pl rekey.sql
-	perl sqlembed.pl < rekey.sql > $@
+sqlinit.h: $(srcdir)/sqlembed.pl $(srcdir)/rekey.sql
+	perl $(srcdir)/sqlembed.pl < $(srcdir)/rekey.sql > $@
 SUBDIRS=lib
 ACLOCAL_AMFLAGS=-I m4
 AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib $(KRB_INC_FLAGS)
