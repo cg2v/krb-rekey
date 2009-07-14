@@ -44,20 +44,23 @@ AC_DEFUN([gl_INIT],
   m4_pushdef([gl_LIBSOURCES_DIR], [])
   gl_COMMON
   gl_source_base='lib'
-  gl_EOVERFLOW
   gl_FUNC_ALLOCA
   gl_HEADER_ARPA_INET
   AC_PROG_MKDIR_P
   gl_ENVIRON
   gl_UNISTD_MODULE_INDICATOR([environ])
+  gl_HEADER_ERRNO_H
   gl_FLOAT_H
   gl_FUNC_FREXP_NO_LIBM
   gl_MATH_MODULE_INDICATOR([frexp])
   gl_FUNC_FREXPL_NO_LIBM
   gl_MATH_MODULE_INDICATOR([frexpl])
   gl_GETADDRINFO
+  gl_NETDB_MODULE_INDICATOR([getaddrinfo])
+  gl_GETOPT
   AC_SUBST([LIBINTL])
   AC_SUBST([LTLIBINTL])
+  gl_HOSTENT
   gl_INET_NTOP
   gl_ARPA_INET_MODULE_INDICATOR([inet_ntop])
   gl_FUNC_ISNAND_NO_LIBM
@@ -69,6 +72,8 @@ AC_DEFUN([gl_INIT],
   gl_MATH_H
   gl_FUNC_MEMCMP
   gl_FUNC_MEMSET
+  gl_MULTIARCH
+  gl_HEADER_NETDB
   gl_HEADER_NETINET_IN
   AC_PROG_MKDIR_P
   gl_FUNC_POLL
@@ -77,6 +82,7 @@ AC_DEFUN([gl_INIT],
   m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
   gl_FUNC_REALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([realloc-posix])
+  gl_SERVENT
   gl_FUNC_SETENV
   gl_STDLIB_MODULE_INDICATOR([setenv])
   gl_SIGNBIT
@@ -92,14 +98,13 @@ AC_DEFUN([gl_INIT],
   gl_STDINT_H
   gl_STDIO_H
   gl_STDLIB_H
-  gl_FUNC_STRDUP
-  gl_STRING_MODULE_INDICATOR([strdup])
   gl_FUNC_STRERROR
   gl_STRING_MODULE_INDICATOR([strerror])
   gl_HEADER_STRING_H
   gl_HEADER_SYS_SELECT
   AC_PROG_MKDIR_P
   gl_HEADER_SYS_SOCKET
+  gl_MODULE_INDICATOR([sys_socket])
   AC_PROG_MKDIR_P
   gl_HEADER_SYS_TIME_H
   AC_PROG_MKDIR_P
@@ -114,10 +119,10 @@ AC_DEFUN([gl_INIT],
   gl_WCHAR_H
   gl_XSIZE
   m4_ifval(gl_LIBSOURCES_LIST, [
-    m4_syscmd([test ! -d ]gl_LIBSOURCES_DIR[ ||
+    m4_syscmd([test ! -d ]m4_defn([gl_LIBSOURCES_DIR])[ ||
       for gl_file in ]gl_LIBSOURCES_LIST[ ; do
-        if test ! -r ]gl_LIBSOURCES_DIR[/$gl_file ; then
-          echo "missing file ]gl_LIBSOURCES_DIR[/$gl_file" >&2
+        if test ! -r ]m4_defn([gl_LIBSOURCES_DIR])[/$gl_file ; then
+          echo "missing file ]m4_defn([gl_LIBSOURCES_DIR])[/$gl_file" >&2
           exit 1
         fi
       done])dnl
@@ -153,10 +158,10 @@ AC_DEFUN([gl_INIT],
   gl_COMMON
   gl_source_base='tests'
   m4_ifval(gltests_LIBSOURCES_LIST, [
-    m4_syscmd([test ! -d ]gltests_LIBSOURCES_DIR[ ||
+    m4_syscmd([test ! -d ]m4_defn([gltests_LIBSOURCES_DIR])[ ||
       for gl_file in ]gltests_LIBSOURCES_LIST[ ; do
-        if test ! -r ]gltests_LIBSOURCES_DIR[/$gl_file ; then
-          echo "missing file ]gltests_LIBSOURCES_DIR[/$gl_file" >&2
+        if test ! -r ]m4_defn([gltests_LIBSOURCES_DIR])[/$gl_file ; then
+          echo "missing file ]m4_defn([gltests_LIBSOURCES_DIR])[/$gl_file" >&2
           exit 1
         fi
       done])dnl
@@ -246,10 +251,12 @@ AC_DEFUN([gltests_LIBSOURCES], [
 # gnulib-tool and may be removed by future gnulib-tool invocations.
 AC_DEFUN([gl_FILE_LIST], [
   build-aux/link-warning.h
+  lib/alloca.c
   lib/alloca.in.h
   lib/arpa_inet.in.h
   lib/asnprintf.c
   lib/asprintf.c
+  lib/errno.in.h
   lib/float+.h
   lib/float.in.h
   lib/fpucw.h
@@ -257,15 +264,18 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/frexpl.c
   lib/gai_strerror.c
   lib/getaddrinfo.c
-  lib/getaddrinfo.h
+  lib/getopt.c
+  lib/getopt.in.h
+  lib/getopt1.c
+  lib/getopt_int.h
   lib/gettext.h
   lib/inet_ntop.c
   lib/intprops.h
   lib/isnan.c
+  lib/isnand-nolibm.h
   lib/isnand.c
-  lib/isnand.h
+  lib/isnanf-nolibm.h
   lib/isnanf.c
-  lib/isnanf.h
   lib/isnanl-nolibm.h
   lib/isnanl.c
   lib/malloc.c
@@ -275,6 +285,7 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/math.in.h
   lib/memcmp.c
   lib/memset.c
+  lib/netdb.in.h
   lib/netinet_in.in.h
   lib/poll.c
   lib/poll.in.h
@@ -296,9 +307,9 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/sprintf.c
   lib/stdbool.in.h
   lib/stdint.in.h
+  lib/stdio-write.c
   lib/stdio.in.h
   lib/stdlib.in.h
-  lib/strdup.c
   lib/strerror.c
   lib/string.in.h
   lib/sys_select.in.h
@@ -314,14 +325,19 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/arpa_inet_h.m4
   m4/eealloc.m4
   m4/environ.m4
-  m4/eoverflow.m4
+  m4/errno_h.m4
+  m4/exponentd.m4
+  m4/exponentf.m4
+  m4/exponentl.m4
   m4/extensions.m4
   m4/float_h.m4
   m4/fpieee.m4
   m4/frexp.m4
   m4/frexpl.m4
   m4/getaddrinfo.m4
+  m4/getopt.m4
   m4/gnulib-common.m4
+  m4/hostent.m4
   m4/include_next.m4
   m4/inet_ntop.m4
   m4/intmax_t.m4
@@ -336,6 +352,8 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/math_h.m4
   m4/memcmp.m4
   m4/memset.m4
+  m4/multiarch.m4
+  m4/netdb_h.m4
   m4/netinet_in_h.m4
   m4/nocrash.m4
   m4/poll.m4
@@ -343,6 +361,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/printf-frexpl.m4
   m4/printf.m4
   m4/realloc.m4
+  m4/servent.m4
   m4/setenv.m4
   m4/signbit.m4
   m4/size_max.m4
@@ -356,7 +375,6 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/stdint_h.m4
   m4/stdio_h.m4
   m4/stdlib_h.m4
-  m4/strdup.m4
   m4/strerror.m4
   m4/string_h.m4
   m4/sys_select_h.m4

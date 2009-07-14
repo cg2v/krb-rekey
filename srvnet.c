@@ -52,8 +52,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
-/* gnulib */
-#include "getaddrinfo.h"
 
 #define SESS_PRIVATE
 #define NEED_SSL

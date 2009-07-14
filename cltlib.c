@@ -53,8 +53,6 @@
 #include <netdb.h>
 #include <ctype.h>
 #include <limits.h>
-/* gnulib */
-#include "getaddrinfo.h"
 #ifdef HAVE_KRB5_KRB5_H
 #include <krb5/krb5.h>
 #else

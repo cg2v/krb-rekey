@@ -9,13 +9,13 @@ BUILT_SOURCES=sqlinit.h dhp512.h dhp3072.h
 CLEANFILES = sqlinit.h dhp512.h dhp3072.h
 CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c memmgt.h  protocol.h  rekeyclt-locl.h  rekey-locl.h
 rekeymgr_SOURCES=rekeyclt.c $(CLIENT_SOURCES)
-rekeymgr_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL)
+rekeymgr_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB)
 getnewkeys_SOURCES=getnewkeys.c $(CLIENT_SOURCES)
-getnewkeys_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL)
+getnewkeys_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB)
 rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
-rekeytest_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL)
+rekeytest_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB)
 rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp512.h dhp3072.h
-rekeysrv_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS)
+rekeysrv_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB)
 
 %.h: %.pem
 	openssl dhparam -C -noout -in $< | sed 's/^DH \*get_dh/static DH *get_dh/' > $@

@@ -1,4 +1,4 @@
-# signbit.m4 serial 3
+# signbit.m4 serial 5
 dnl Copyright (C) 2007-2008 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
@@ -123,15 +123,33 @@ AC_DEFUN([gl_SIGNBIT],
   fi
 ])
 
-AC_DEFUN([gl_SIGNBIT_TEST_PROGRAM], [
-float p0f = 0.0f;
-float m0f = -0.0f;
-double p0d = 0.0;
-double m0d = -0.0;
-long double p0l = 0.0L;
-long double m0l = -0.0L;
+AC_DEFUN([gl_SIGNBIT_TEST_PROGRAM], [[
+/* Global variables.
+   Needed because GCC 4 constant-folds __builtin_signbitl (literal)
+   but cannot constant-fold            __builtin_signbitl (variable).  */
+float vf;
+double vd;
+long double vl;
 int main ()
 {
+/* HP cc on HP-UX 10.20 has a bug with the constant expression -0.0.
+   So we use -p0f and -p0d instead.  */
+float p0f = 0.0f;
+float m0f = -p0f;
+double p0d = 0.0;
+double m0d = -p0d;
+/* On HP-UX 10.20, negating 0.0L does not yield -0.0L.
+   So we use another constant expression instead.
+   But that expression does not work on other platforms, such as when
+   cross-compiling to PowerPC on MacOS X 10.5.  */
+long double p0l = 0.0L;
+#if defined __hpux || defined __sgi
+long double m0l = -LDBL_MIN * LDBL_MIN;
+#else
+long double m0l = -p0l;
+#endif
+  if (signbit (vf))
+    vf++;
   {
     float plus_inf = 1.0f / p0f;
     float minus_inf = -1.0f / p0f;
@@ -143,6 +161,8 @@ int main ()
           && signbit (minus_inf)))
       return 1;
   }
+  if (signbit (vd))
+    vd++;
   {
     double plus_inf = 1.0 / p0d;
     double minus_inf = -1.0 / p0d;
@@ -154,6 +174,8 @@ int main ()
           && signbit (minus_inf)))
       return 1;
   }
+  if (signbit (vl))
+    vl++;
   {
     long double plus_inf = 1.0L / p0l;
     long double minus_inf = -1.0L / p0l;
@@ -167,7 +189,7 @@ int main ()
   }
   return 0;
 }
-])
+]])
 
 AC_DEFUN([gl_FLOAT_SIGN_LOCATION],
 [
