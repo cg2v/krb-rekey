@@ -26,11 +26,14 @@ if test X$KRB5CONF = X; then
 fi
 KRB5_INC_FLAGS=`$KRB5CONF --cflags`
 LIB_GSS=`$KRB5CONF --libs gssapi`
+AC_SUBST([LIB_GSS])
 if test "X$LIB_GSS" = "X"; then
    AC_MSG_ERROR([krb5-config does not support GSSAPI])
 fi
 LIB_KRB5=`$KRB5CONF --libs`
+AC_SUBST([LIB_KRB5])
 AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL=-lssl], [
+AC_SUBST([LIB_SSL])
 AC_MSG_ERROR([No openssl library found])])
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
 
@@ -47,7 +50,9 @@ AC_MSG_ERROR([No ldap groups library found])])
 AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
 fi
 
-AC_SUBST([LIB_GSS LIB_KRB5 LIB_KADMS LIB_SQLITE3 LIB_SSL LIB_GROUPS])
+AC_SUBST([LIB_KADMS])
+AC_SUBST([LIB_SQLITE3])
+AC_SUBST([LIB_GROUPS])
 
 # Checks for header files.
 AC_HEADER_STDC
