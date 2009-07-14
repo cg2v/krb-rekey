@@ -126,8 +126,16 @@ int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
 
-void fatal(const char *, ...);
-void prtmsg(const char *, ...);
+void fatal(const char *, ...)
+#if __GNUC__ > 2
+__attribute__((format(printf, 1, 2)))
+#endif
+;
+void prtmsg(const char *, ...)
+#if __GNUC__ > 2
+__attribute__((format(printf, 1, 2)))
+#endif
+;
 void vprtmsg(const char *msg, va_list ap);
 
 #endif

@@ -258,17 +258,28 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
     goto out;
   }
 #else
-  /* default principal exclusions: kadmin / *, local tgt. */
+  /* default principal exclusions: kadmin, local tgt, master key verifier, 
+     single component that isn't afs@ (i.e. users). */
   if (!c1) {
 badprinc:
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
+  if ((!c2 || strlen(c2) == 0) && strlen(c1) == strlen("afs") &&
+      !strcmp(c1, "afs"))
+    goto ok;
+  if ((!c2 || strlen(c2) == 0))
+    goto badprinc;
+
   if (strlen(c1) == strlen("kadmin") && !strcmp(c1, "kadmin"))
      goto badprinc;
   if (strlen(c1) == strlen("krbtgt") && !strcmp(c1, "krbtgt") &&
       strlen(c2) == strlen(princ_realm) && !strcmp(c2, princ_realm))
-     goto badprinc;
+    goto badprinc;
+  if (strlen(c1) == 1 && strlen(c2) == 1  && !strcmp(c1, "K") &&
+      !strcmp(c2, "M"))
+    goto badprinc;
+ ok:
 #endif
   ret=0;
   
@@ -301,14 +312,22 @@ badprinc:
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
+  if (!c2 && c1->length == strlen("afs") && strncmp(c1, "afs", c1->length))
+    goto ok;
+  if (!c2)
+    goto badprinc;
   if (c1->length == strlen("kadmin") &&
       !strncmp(c1->data, "kadmin", c1->length))
     goto badprinc;
   if (c1->length == strlen("krbtgt") &&
       !strncmp(c1->data, "krbtgt", c1->length) &&
-      c2 && c2->length == princ_realm->length &&
+      c2->length == princ_realm->length &&
       !strncmp(c2->data, princ_realm->data, c2->length))
     goto badprinc;
+  if (c1->length == 1 && c1->data[0] == 'K' &&
+      c2->length == 1 && c2->data[0] == 'M')
+    goto badprinc;
+ ok:
 #endif
   ret=0;
  out:
@@ -796,7 +815,7 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
   rc = kadm5_setkey_principal(sess->kadm_handle, target, k, nk);
 #endif
   if (rc) {
-    prtmsg("finalizing %s failed to update kdc with keys: %s", 
+    prtmsg("finalizing %s failed to update kdc with keys: %s", principal,
 	   krb5_get_err_text(sess->kctx, rc));
     
     rc = sqlite3_bind_text(updmsg, 2, "setting keys in kdc failed", 

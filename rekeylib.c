@@ -49,7 +49,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <limits.h>
+#ifdef HAVE_KRB5_KRB5_H
+#include <krb5/krb5.h>
+#else
 #include <krb5.h>
+#endif
 #ifdef HEADER_GSSAPI_GSSAPI
 #include <gssapi/gssapi.h>
 #else
@@ -77,7 +82,13 @@ void prtmsg(const char *msg, ...) {
      va_end(ap);
 }
 static int do_ssl_error(const char *str, size_t len, void *u) {
-  prtmsg("%.*s", len, str);
+  int l;
+  if (len > INT_MAX) {
+    prtmsg("ssl error of length %lu cannot be displayed", (unsigned long)len);
+    return 0;
+  }
+  l = len;
+  prtmsg("%.*s", l, str);
   return 0;
 }
 void ssl_fatal(SSL *ssl, int code) {

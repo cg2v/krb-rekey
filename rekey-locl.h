@@ -50,8 +50,16 @@ void do_gss_error(gss_OID, OM_uint32, OM_uint32, void (*)(void *, gss_buffer_t),
 void prt_err_reply(struct mem_buffer *);
 
 
-void fatal(const char *, ...);
-void prtmsg(const char *, ...);
+void fatal(const char *, ...)
+#if __GNUC__ > 2
+__attribute__((format(printf, 1, 2)))
+#endif
+;
+void prtmsg(const char *, ...)
+#if __GNUC__ > 2
+__attribute__((format(printf, 1, 2)))
+#endif
+;
 void ssl_fatal(SSL *, int);
 
 /* provided independently by client & server */
