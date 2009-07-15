@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT(KRB-REKEY, 0.5, n-a@n-a)
+AC_INIT(KRB-REKEY, 0.6, n-a@n-a)
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([rekey-locl.h])
 AC_CONFIG_HEADER([config.h])
