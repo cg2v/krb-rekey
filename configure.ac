@@ -12,6 +12,7 @@ AC_PROG_CC
 gl_EARLY
 AX_CFLAGS_WARN_ALL
 gl_INIT
+AC_DEFINE([REPLACE_VASNPRINTF], [1], [rename vasnprintf to avoid cross-library api conflicts])
 # Checks for libraries.
 dnl AC_CHECK_LIB([gssapi], [gss_init_sec_context], [LIB_GSS=-lgssapi],[
 dnl AC_CHECK_LIB([gssapi_krb5], [gss_init_sec_context], [LIB_GSS=-lgssapi_krb5],[
@@ -32,7 +33,12 @@ if test "X$LIB_GSS" = "X"; then
 fi
 LIB_KRB5=`$KRB5CONF --libs`
 AC_SUBST([LIB_KRB5])
-AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL=-lssl], [
+AC_CHECK_LIB([crypto], [ERR_load_crypto_strings], [LIB_CRYPTO=-lcrypto])
+save_LIBS="$LIBS"
+LIBS="$LIB_CRYPTO $LIBS"
+AC_CHECK_FUNCS([ERR_print_errors_cb CRYPTO_cleanup_all_ex_data])
+LIBS="$save_LIBS"
+AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL="-lssl $LIB_CRYPTO"], [
 AC_SUBST([LIB_SSL])
 AC_MSG_ERROR([No openssl library found])])
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])

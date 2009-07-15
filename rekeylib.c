@@ -91,6 +91,25 @@ static int do_ssl_error(const char *str, size_t len, void *u) {
   prtmsg("%.*s", l, str);
   return 0;
 }
+#ifndef HAVE_ERR_PRINT_ERRORS_CB
+static void ERR_print_errors_cb(int (*cb)(const char *str, size_t len, void *u),
+                                void *u) {
+  unsigned long l;
+  const char *file, *data;
+  int line, flags;
+  char constbuf[256];
+  char fullbuf[4096];
+  size_t slen;
+  
+  while ((l = ERR_get_error_line_data(&file, &line, &data, &flags))) {
+    ERR_error_string_n(l, constbuf, sizeof(constbuf));
+    slen = snprintf(fullbuf, sizeof(fullbuf), "%s:%s:%d:%s\n", constbuf,
+                    file, line, (flags & ERR_TXT_STRING) ? data : "");
+    cb(fullbuf, slen >= sizeof(fullbuf) ? sizeof(fullbuf) -1 : slen, u);
+  }
+}
+#endif
+
 void ssl_fatal(SSL *ssl, int code) {
   if (ERR_peek_error()) {
     ERR_print_errors_cb(do_ssl_error, NULL);

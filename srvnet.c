@@ -121,18 +121,21 @@ void ssl_cleanup(void) {
   sslctx=NULL;
   EVP_cleanup();
   ERR_free_strings();
+#ifdef HAVE_CRYPTO_CLEANUP_ALL_EX_DATA
   CRYPTO_cleanup_all_ex_data();
+#endif
 }
 static int listenfds[16];
 static int nlfds;
 
-/* glibc 2.3.3 doesn't define AI_NUMERICSERV, but will accept a numeric service
-   anyway. gnulib's getaddrinfo.h supplies a definitition even if the
+/* glibc 2.3.3 and solaris 8 don't define AI_NUMERICSERV, but will accept a
+   numeric service anyway. gnulib's getaddrinfo.h/netdb.h supplies a
+   definitition even if the
    gnulib getaddrinfo implementation doesn't get used. the gnulib implementation does not provide/implement AI_ADDRCONFIG, so zero that if it's not defined
  */
-#if __GLIBC__ && AI_NUMERICSERV > 128
+#if AI_NUMERICSERV > 128
 #ifdef AI_ADDRCONFIG
-/* assume glibc getaddrinfo will be used */
+/* assume native getaddrinfo will be used */
 #undef AI_NUMERICSERV
 #define AI_NUMERICSERV 0
 #else
