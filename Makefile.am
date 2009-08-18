@@ -4,7 +4,7 @@ sbin_PROGRAMS=$(SERVER_PROG) getnewkeys
 noinst_PROGRAMS=rekeytest
 EXTRA_PROGRAMS=rekeysrv
 EXTRA_DIST=dhp1024.pem  dhp2048.pem  dhp3072.pem  dhp4096.pem  dhp512.pem \
-   dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql
+   dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql SMakefile
 BUILT_SOURCES=sqlinit.h dhp512.h dhp3072.h
 CLEANFILES = sqlinit.h dhp512.h dhp3072.h
 CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c memmgt.h  protocol.h  rekeyclt-locl.h  rekey-locl.h
