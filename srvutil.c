@@ -323,6 +323,7 @@ int sql_init(struct rekey_session *sess)
   }
 #endif
     
+#if SQLITE_VERSION_NUMBER >= 3003007 /* need support for CREATE TRIGGER IF NOT EXIST */
   for (sql=sql_embeded_init[i=0]; sql;sql=sql_embeded_init[++i]) {
     rc = sqlite3_exec(dbh, sql, NULL, NULL, &errmsg);
     if (rc != SQLITE_OK) {
@@ -336,6 +337,9 @@ int sql_init(struct rekey_session *sess)
       return 1;
     }
   }
+#else
+#warning Automatic database initialization not available
+#endif
   sess->dbh = dbh;
   return 0;
 }
