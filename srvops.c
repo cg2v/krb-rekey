@@ -1203,6 +1203,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    prtmsg("Not authorized to newreq");
     return;
   }
   if (buf_getstring(buf, &principal, malloc))
@@ -1238,6 +1239,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto badpkt;
   if (flag != 0 && flag != REQFLAG_DESONLY) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
+    prtmsg("Invalid flag word %d in newreq", flag);
     goto freeall;
   }
   desonly=0;
@@ -1341,6 +1343,7 @@ static void s_status(struct rekey_session *sess, mb_t buf)
 
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    prtmsg("Not authorized to get status");
     return;
   }
 
@@ -1433,6 +1436,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     
   if (sess->is_host == 0) {
     send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
+    prtmsg("Not authorized to getkeys");
     return;
   } 
 
@@ -1538,6 +1542,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
       send_error(sess, ERR_NOKEYS, "None of the requested keys are available for this host");
     else
       send_error(sess, ERR_NOKEYS, "No keys available for this host");
+    prtmsg("getnewkeys: No applicable keys available");
   } else {
     set_cursor(buf, 0);
     if (buf_putint(buf, m))
@@ -1593,6 +1598,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 
   if (sess->is_host == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized");
+    prtmsg("Not authorized to commitkey");
     return;
   }
   if (buf_getstring(buf, &principal, malloc))
@@ -1727,7 +1733,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
    to create a new principal. sends a KEYS response if successful */
 static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
-  char *principal=NULL;
+  char *principal=NULL, *unp;
   int desonly;
   unsigned int flag;
   int rc;
@@ -1738,6 +1744,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
 
   if (sess->is_admin == 0) {
     send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
+    prtmsg("Not authorized to simplekey");
     return;
   }
   if (buf_getstring(buf, &principal, malloc))
@@ -1748,6 +1755,26 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     send_error(sess, ERR_BADREQ, "Bad principal name");
     goto freeall;
   }
+
+  rc=krb5_unparse_name(sess->kctx, target, &unp);
+  if (rc) {
+    prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  } 
+  if (strcmp(unp, principal)) {
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+    krb5_xfree(unp);
+#else
+    krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+    send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    goto freeall;
+  }
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+  krb5_xfree(unp);
+#else
+  krb5_free_unparsed_name(sess->kctx, unp);
+#endif
 
   if (buf_getint(buf, &flag))
     goto badpkt;
