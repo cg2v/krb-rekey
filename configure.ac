@@ -25,7 +25,8 @@ AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then
    AC_MSG_ERROR([krb5-config not found. update path or set KRB5CONF before running configure])
 fi
-KRB5_INC_FLAGS=`$KRB5CONF --cflags`
+KRB_INC_FLAGS=`$KRB5CONF --cflags`
+AC_SUBST([KRB_INC_FLAGS])
 LIB_GSS=`$KRB5CONF --libs gssapi`
 AC_SUBST([LIB_GSS])
 if test "X$LIB_GSS" = "X"; then
@@ -80,7 +81,7 @@ AC_TYPE_PID_T
 AC_TYPE_SIZE_T
 
 save_CPPFLAGS="$CPPFLAGS"
-CPPFLAGS="$CPPFLAGS $KRB5_INC_FLAGS"
+CPPFLAGS="$CPPFLAGS $KRB_INC_FLAGS"
 AC_CHECK_MEMBER([krb5_keyblock.enctype],
   [AC_DEFINE([HAVE_KRB5_KEYBLOCK_ENCTYPE], [],
     [Define if struct krb5_keyblock has member 'enctype'])], [],
