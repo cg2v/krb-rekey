@@ -50,10 +50,10 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <limits.h>
-#ifdef HAVE_KRB5_KRB5_H
-#include <krb5/krb5.h>
-#else
+#ifdef HAVE_KRB5_H
 #include <krb5.h>
+#else
+#include <krb5/krb5.h>
 #endif
 #ifdef HEADER_GSSAPI_GSSAPI
 #include <gssapi/gssapi.h>

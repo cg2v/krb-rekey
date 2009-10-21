@@ -10,10 +10,10 @@
 #endif
 
 #ifdef NEED_KRB5
-#ifdef HAVE_KRB5_KRB5_H
-#include <krb5/krb5.h>
-#else
+#ifdef HAVE_KRB5_H
 #include <krb5.h>
+#else
+#include <krb5/krb5.h>
 #endif
 #ifndef HAVE_KRB5_GET_ERR_TEXT
 #include <com_err.h>
