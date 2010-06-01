@@ -120,13 +120,15 @@ static int in_admin_group(const char *username)
       /* special build of libgroups deals with this, so must we */
       groups_config(g, GROUPS_FIELD_TLS_CAFILE, "/etc/trustedcert/bundle-cmu.crt") ||
 #endif
-      groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
+      groups_config(g, GROUPS_FLAG_NOAUTH, NULL) ||
+      groups_config(g, GROUPS_FLAG_RECURSE, NULL)) {
     prtmsg("Cannot configure groups library: %s", groups_error(g));
     goto freeall;
   }
 #else
   prtmsg("No SSL/TLS support in <groups.h>. authz checks will not be trustworthy");
-  if (groups_config(g, GROUPS_FLAG_NOAUTH, NULL)) {
+  if (groups_config(g, GROUPS_FLAG_NOAUTH, NULL) ||
+      groups_config(g, GROUPS_FLAG_RECURSE, NULL)) {
     prtmsg("Cannot configure groups library: %s", groups_error(g));
     goto freeall;
   }
@@ -460,6 +462,8 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 	}
         goto freeall;
       }
+     if (created)
+	  prtmsg("Created principal %s", principal);
     } else {
       prtmsg("Unable to lookup principal %s: %s", principal, 
 	     krb5_get_err_text(sess->kctx, rc));
@@ -845,6 +849,7 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     goto dberr;
   dbaction=1;
   ret=0;
+  prtmsg("Operation(s) on %s completed successfully", principal);
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
@@ -864,9 +869,14 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
     sqlite3_finalize(updmsg);
   if (selkey)
     sqlite3_finalize(selkey);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
+  if (dbaction > 0) {
+    if (sql_commit_trans(sess)) {
+      sql_rollback_trans(sess);
+      ret=1;
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    }
+  } else if (dbaction < 0)
     sql_rollback_trans(sess);
   if (k) {
     for (i=0; i<nk; i++) {
@@ -1183,7 +1193,8 @@ static void s_authchan(struct rekey_session *sess, mb_t buf)
    prtmsg("Authentication bound to SSL %s", sslid);
  }
 #else
- prtmsg("Channel bindings sucessfully verified");
+ /*prtmsg("Authentication completed");*/
+ /*prtmsg("Channel bindings sucessfully verified");*/
 #endif
 }
 
@@ -1227,6 +1238,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     krb5_free_unparsed_name(sess->kctx, unp);
 #endif
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
@@ -1257,6 +1269,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (check_target(sess, target))
     goto freeall;
 
+  prtmsg("Start rekey on %s", principal);
   if (sql_init(sess))
     goto dberrnomsg;
 
@@ -1313,9 +1326,14 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
  freeall:
   if (ins)
     sqlite3_finalize(ins);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
+  if (dbaction > 0) {
+    if (sql_commit_trans(sess)) {
+      sql_rollback_trans(sess);
+      ret=1;
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    }
+  } else if (dbaction < 0)
     sql_rollback_trans(sess);
 
   if (target)
@@ -1349,7 +1367,7 @@ static void s_status(struct rekey_session *sess, mb_t buf)
 
   if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-
+  prtmsg("getstatus for %s", principal);
   if (sql_init(sess))
     goto dberrnomsg;
   
@@ -1455,7 +1473,10 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
       }
     }
   }
-  
+  if (names)
+    prtmsg("Getkeys for %d principals\n", n);
+  else
+    prtmsg("Getkeys for all available\n");
   if (sql_init(sess))
     goto dberrnomsg;
 
@@ -1571,9 +1592,14 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     sqlite3_finalize(updatt);
   if (updcount)
     sqlite3_finalize(updcount);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
+  if (dbaction > 0) {
+    if (sql_commit_trans(sess)) {
+      sql_rollback_trans(sess);
+      ret=1;
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    }
+  } else if (dbaction < 0)
     sql_rollback_trans(sess);
   if (names) {
     for (i=0;i<n;i++)
@@ -1590,6 +1616,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
   sqlite_int64 princid;
   krb5_kvno kvno;
+  unsigned int lkvno;
   int no_send = 0;
   char *principal = NULL;
   int dbaction=0, rc, match;
@@ -1610,11 +1637,19 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     goto freeall;
   }
 
-  if (buf_getint(buf, &kvno))
+  if (buf_getint(buf, &lkvno))
     goto badpkt;
+  if (lkvno > INT_MAX) {
+    prtmsg("kvno %u is out of range", lkvno);
+    send_error(sess, ERR_BADREQ, "Bad key version");
+    goto freeall;
+  }
+  kvno = lkvno;
   
   if (check_target(sess, target))
     goto freeall;
+
+  prtmsg("Commit kvno %d of %s", kvno, principal);
 
   if (sql_init(sess))
     goto dberrnomsg;
@@ -1685,9 +1720,9 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     updcount=NULL;
     if (rc != SQLITE_OK)
       goto dberr;
-    dbaction=0;
     if (sql_commit_trans(sess))
       goto dberr;
+    dbaction=0;
     /* at this point, the client doesn't care about future errors */
     sess_send(sess, RESP_OK, NULL);
     no_send = 1;
@@ -1717,9 +1752,14 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     sqlite3_finalize(updcomp);
   if (updcount)
     sqlite3_finalize(updcount);
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
+  if (dbaction > 0) {
+    if (sql_commit_trans(sess)) {
+      sql_rollback_trans(sess);
+      ret=1;
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    }
+  } else if (dbaction < 0)
     sql_rollback_trans(sess);
   if (target)
     krb5_free_principal(sess->kctx, target);  
@@ -1768,6 +1808,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     krb5_free_unparsed_name(sess->kctx, unp);
 #endif
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
@@ -1789,6 +1830,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (check_target(sess, target))
     goto freeall;
 
+  prtmsg("Immediate create/change key of %s", principal);
   if (sql_init(sess))
     goto dberrnomsg;
 
@@ -1823,9 +1865,14 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:
-  if (dbaction > 0)
-    sql_commit_trans(sess);
-  else if (dbaction < 0)
+  if (dbaction > 0) {
+    if (sql_commit_trans(sess)) {
+      sql_rollback_trans(sess);
+      ret=1;
+      if (no_send == 0)
+        send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    }
+  } else if (dbaction < 0)
     sql_rollback_trans(sess);
 
   if (target)
@@ -1846,7 +1893,9 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
   }
   if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
-  
+ 
+  prtmsg("Aborting in progress changes of %s", principal);
+ 
   if (sql_init(sess))
     goto dberrnomsg;
 
@@ -1893,6 +1942,7 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
     send_error(sess, ERR_BADREQ, "Bad principal name");
     goto freeall;
   }
+  prtmsg("Immediate commit/finalize of %s", principal);
 
   if (sql_init(sess))
     goto dberrnomsg;
@@ -1968,6 +2018,7 @@ static void s_delprinc(struct rekey_session *sess, mb_t buf)
     krb5_free_unparsed_name(sess->kctx, unp);
 #endif
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
@@ -1976,6 +2027,7 @@ static void s_delprinc(struct rekey_session *sess, mb_t buf)
   krb5_free_unparsed_name(sess->kctx, unp);
 #endif
 
+  prtmsg("Delete principal %s", principal);
 
   if (sql_init(sess))
     goto dberrnomsg;
