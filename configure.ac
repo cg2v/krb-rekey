@@ -120,6 +120,25 @@ AC_CHECK_MEMBER([krb5_keytab_entry.key],
 if test X$ac_cv_member_krb5_keytab_entry_keyblock != Xyes && test X$ac_cv_member_krb5_keytab_entry_key != Xyes; then
 	AC_MSG_ERROR([Cannot figure out how struct keytab_entry works])
 fi
+AC_CHECK_MEMBER([krb5_ticket.enc_part2],
+  [AC_DEFINE([HAVE_KRB5_TICKET_ENC_PART2], [],
+    [Define if struct krb5_ticket has member 'enc_part2'])], [], 
+     [#ifdef HAVE_KRB5_H
+#include <krb5.h>
+#else
+#include <krb5/krb5.h>
+#endif])
+AC_CHECK_MEMBER([krb5_ticket.ticket],
+  [AC_DEFINE([HAVE_KRB5_TICKET_TICKET], [],
+    [Define if struct krb5_ticket has member 'ticket'])], [], 
+     [#ifdef HAVE_KRB5_H
+#include <krb5.h>
+#else
+#include <krb5/krb5.h>
+#endif])
+if test X$ac_cv_member_krb5_ticket_enc_part2 != Xyes && test X$ac_cv_member_krb5_ticket_ticket != Xyes; then
+	AC_MSG_ERROR([Cannot figure out how struct krb5_ticket works])
+fi
 CPPFLAGS="$save_CPPFLAGS"
 
 save_LIBS="$LIBS"
@@ -131,8 +150,8 @@ AC_CHECK_TYPES([krb5_realm], , , [#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree])
-AC_CHECK_DECLS([krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree],[],[],[#ifdef HAVE_KRB5_H
+AC_CHECK_FUNCS([krb5_get_error_message krb5_get_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree])
+AC_CHECK_DECLS([krb5_get_error_message, krb5_get_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>

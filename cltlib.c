@@ -69,6 +69,7 @@
 #include "memmgt.h"
 #include "rekey-locl.h"
 #include "protocol.h"
+#include "krb5_portability.h"
 
 static SSL_CTX *sslctx;
 

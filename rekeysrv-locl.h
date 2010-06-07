@@ -15,22 +15,7 @@
 #else
 #include <krb5/krb5.h>
 #endif
-#ifndef HAVE_KRB5_GET_ERR_TEXT
-#include <com_err.h>
-#define krb5_get_err_text(c, r) error_message(r)
-#endif
-#ifdef HAVE_KRB5_KEYBLOCK_ENCTYPE
-#define Z_keydata(keyblock)     ((keyblock)->contents)
-#define Z_keylen(keyblock)      ((keyblock)->length)
-#define Z_enctype(keyblock)     ((keyblock)->enctype)
-#else
-#define Z_keydata(keyblock)     ((keyblock)->keyvalue.data)
-#define Z_keylen(keyblock)      ((keyblock)->keyvalue.length)
-#define Z_enctype(keyblock)     ((keyblock)->keytype)
-#endif
-#if defined(HAVE_KRB5_C_MAKE_RANDOM_KEY) && !defined(HAVE_KRB5_GENERATE_RANDOM_KEYBLOCK)
-#define krb5_generate_random_keyblock krb5_c_make_random_key
-#endif
+#include "krb5_portability.h"
 #if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
 #elif defined (HAVE_KRB5_PRINC_REALM) && defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
