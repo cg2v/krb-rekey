@@ -4,9 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/time.h>
 #include <time.h>
-#include "vasnprintf.h"
+
 #ifdef HAVE_KRB5_KRB5_H
 #include <krb5/krb5.h>
 #else
@@ -256,6 +257,59 @@ void do_free_principals(krb5_context ctx, principal *princ_list) {
   }
 }
 
+krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
+{
+  krb5_keytab kt=NULL;
+  char *ktdef=NULL, *ktname=NULL;
+  int rc;
+
+  if (!keytab) {
+    ktdef=malloc(BUFSIZ);
+    if (!ktdef) {
+      fprintf(stderr, "Memory allocation failed: %s", strerror(errno));
+      goto out;
+    } 
+    rc = krb5_kt_default_name(ctx, ktdef, BUFSIZ);
+    if (rc) {
+      print_krb5_error(ctx, stderr, "Looking up default keytab name failed", NULL, rc);
+      goto out;
+    }   
+    keytab = ktdef;
+  }
+  
+  if (!strncmp(keytab, "FILE:", 5))
+    keytab=&keytab[5];
+  if (!strchr(keytab, ':')) {
+    ktname = malloc(8 + strlen(keytab));
+    if (!ktname) {
+      fprintf(stderr, "Memory allocation failed: %s", strerror(errno));
+      goto out;
+    } 
+    sprintf(ktname, "WRFILE:%s", keytab);
+    rc = krb5_kt_resolve(ctx, ktname, &kt);
+    if (rc) {
+      sprintf(ktname, "FILE:%s", keytab);
+      rc = krb5_kt_resolve(ctx, ktname, &kt);
+      if (rc) {
+	print_krb5_error(ctx, stderr, "Cannot open default keytab", NULL, rc);
+	goto out;
+      }
+    } 
+  } else {
+    rc = krb5_kt_resolve(ctx, keytab, &kt);
+    if (rc) {
+      print_krb5_error(ctx, stderr, "Cannot open keytab", NULL, rc);
+      goto out;
+    }
+  }
+ out:
+  if (ktdef)
+    free(ktdef);
+  if (ktname)
+    free(ktname);
+  return kt;
+}
+
 int main(int argc, char **argv) {
   krb5_context krb5_ctx;
   principal *keytab_princ_list=NULL, *tmp;
@@ -267,32 +321,8 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  if (argc > 1) {
-#ifdef KRB5_CALLCONV
-    if (strchr(argv[1], ':')) {
-      rc = krb5_kt_resolve(krb5_ctx, argv[1], &krb5_kt);
-    } else {
-      char *new;
-      if (asprintf(&new, "WRFILE:%s", argv[1]) < 0) {
-	fprintf(stderr, "Cannot allocate memory (while opening keytab file)\n");
-	exit(1);
-      }
-      rc = krb5_kt_resolve(krb5_ctx, new, &krb5_kt);
-      free(new);
-    }
-#else
-      rc = krb5_kt_resolve(krb5_ctx, argv[1], &krb5_kt);
-#endif    
-  } else {
-#ifdef KRB5_CALLCONV
-    rc = krb5_kt_resolve(krb5_ctx, "WRFILE:/etc/krb5.keytab", &krb5_kt);
-#else
-    rc = krb5_kt_default(krb5_ctx, &krb5_kt);
-#endif
-  }
-
-  if (rc) {
-    print_krb5_error(krb5_ctx, stderr, "Cannot open keytab file", NULL, rc);
+  krb5_kt = get_keytab(krb5_ctx, argc > 1 ? argv[1] : NULL);
+  if (!krb5_kt) {
     exit(1);
   }
 
@@ -307,6 +337,7 @@ int main(int argc, char **argv) {
 	krb5_keytab_entry rm_entry;
 	memset(&rm_entry, 0, sizeof(krb5_keytab_entry));
 	rm_entry.principal = tmp->name;
+	rc = 0;
 	for (vno=tmp->min_vno; vno < tmp->kdc_vno; vno++) {
 	  rm_entry.vno = vno;
 	  for (etype=tmp->min_enctype; etype <= tmp->max_enctype; etype++) {
