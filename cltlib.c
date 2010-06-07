@@ -87,7 +87,7 @@ void ssl_startup(void) {
      sslctx=SSL_CTX_new(TLSv1_client_method());
      if (!sslctx)
        ssl_fatal(NULL, 0);
-     rc=SSL_CTX_set_cipher_list(sslctx, "aNULL:-EXPORT:-LOW:-MD5");
+     rc=SSL_CTX_set_cipher_list(sslctx, "aNULL:-eNULL:-EXPORT:-LOW:-MD5:@STRENGTH");
      if (rc == 0)
        ssl_fatal(NULL, 0);
 }
