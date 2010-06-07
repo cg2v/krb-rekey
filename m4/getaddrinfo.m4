@@ -1,5 +1,5 @@
-# getaddrinfo.m4 serial 19
-dnl Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+# getaddrinfo.m4 serial 22
+dnl Copyright (C) 2004-2010 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
@@ -18,14 +18,14 @@ AC_DEFUN([gl_GETADDRINFO],
   dnl - On BeOS, it is in libnet.
   dnl - On native Windows, it is in ws2_32.dll.
   dnl - Otherwise it is in libc.
-  AC_SEARCH_LIBS(getaddrinfo, [socket network net],
+  AC_SEARCH_LIBS([getaddrinfo], [socket network net],
     [if test "$ac_cv_search_getaddrinfo" != "none required"; then
        GETADDRINFO_LIB="$ac_cv_search_getaddrinfo"
      fi])
   LIBS="$gai_saved_LIBS $GETADDRINFO_LIB"
 
   AC_CACHE_CHECK([for getaddrinfo], [gl_cv_func_getaddrinfo], [
-    AC_TRY_LINK([
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include <sys/types.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
@@ -34,28 +34,28 @@ AC_DEFUN([gl_GETADDRINFO],
 #include <netdb.h>
 #endif
 #include <stddef.h>
-], [getaddrinfo("", "", NULL, NULL);],
+]], [[getaddrinfo("", "", NULL, NULL);]])],
       [gl_cv_func_getaddrinfo=yes],
       [gl_cv_func_getaddrinfo=no])])
   if test $gl_cv_func_getaddrinfo = no; then
-    AC_CACHE_CHECK(for getaddrinfo in ws2tcpip.h and -lws2_32,
-		   gl_cv_w32_getaddrinfo, [
+    AC_CACHE_CHECK([for getaddrinfo in ws2tcpip.h and -lws2_32],
+                   gl_cv_w32_getaddrinfo, [
       gl_cv_w32_getaddrinfo=no
       am_save_LIBS="$LIBS"
       LIBS="$LIBS -lws2_32"
-      AC_TRY_LINK([
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #ifdef HAVE_WS2TCPIP_H
 #include <ws2tcpip.h>
 #endif
 #include <stddef.h>
-], [getaddrinfo(NULL, NULL, NULL, NULL);], gl_cv_w32_getaddrinfo=yes)
+]], [[getaddrinfo(NULL, NULL, NULL, NULL);]])], [gl_cv_w32_getaddrinfo=yes])
       LIBS="$am_save_LIBS"
     ])
     if test "$gl_cv_w32_getaddrinfo" = "yes"; then
       GETADDRINFO_LIB="-lws2_32"
       LIBS="$gai_saved_LIBS $GETADDRINFO_LIB"
     else
-      AC_LIBOBJ(getaddrinfo)
+      AC_LIBOBJ([getaddrinfo])
     fi
   fi
 
@@ -64,7 +64,7 @@ AC_DEFUN([gl_GETADDRINFO],
   # header included somehow.
   AC_CACHE_CHECK([for gai_strerror (possibly via ws2tcpip.h)],
     gl_cv_func_gai_strerror, [
-      AC_TRY_LINK([
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include <sys/types.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
@@ -76,11 +76,11 @@ AC_DEFUN([gl_GETADDRINFO],
 #include <ws2tcpip.h>
 #endif
 #include <stddef.h>
-], [gai_strerror (NULL);],
+]], [[gai_strerror (NULL);]])],
         [gl_cv_func_gai_strerror=yes],
         [gl_cv_func_gai_strerror=no])])
   if test $gl_cv_func_gai_strerror = no; then
-    AC_LIBOBJ(gai_strerror)
+    AC_LIBOBJ([gai_strerror])
   fi
 
   LIBS="$gai_saved_LIBS"
@@ -96,6 +96,7 @@ AC_DEFUN([gl_PREREQ_GETADDRINFO], [
   AC_REQUIRE([gl_HEADER_SYS_SOCKET])dnl for HAVE_SYS_SOCKET_H, HAVE_WINSOCK2_H
   AC_REQUIRE([gl_HOSTENT]) dnl for HOSTENT_LIB
   AC_REQUIRE([gl_SERVENT]) dnl for SERVENT_LIB
+  AC_REQUIRE([gl_INET_NTOP]) dnl for INET_NTOP_LIB
   AC_REQUIRE([AC_C_RESTRICT])
   AC_REQUIRE([gl_SOCKET_FAMILIES])
   AC_REQUIRE([gl_HEADER_SYS_SOCKET])
@@ -106,7 +107,7 @@ AC_DEFUN([gl_PREREQ_GETADDRINFO], [
   dnl have sa_len so the result is correct anyway.
   AC_CHECK_MEMBERS([struct sockaddr.sa_len], , , [#include <sys/socket.h>])
 
-  AC_CHECK_HEADERS_ONCE(netinet/in.h)
+  AC_CHECK_HEADERS_ONCE([netinet/in.h])
 
   AC_CHECK_DECLS([getaddrinfo, freeaddrinfo, gai_strerror, getnameinfo],,,[
   /* sys/types.h is not needed according to POSIX, but the
@@ -162,5 +163,11 @@ AC_DEFUN([gl_PREREQ_GETADDRINFO], [
   case " $GETADDRINFO_LIB " in
     *" $SERVENT_LIB "*) ;;
     *) GETADDRINFO_LIB="$GETADDRINFO_LIB $SERVENT_LIB" ;;
+  esac
+
+  dnl Append $INET_NTOP_LIB to GETADDRINFO_LIB, avoiding gratuitous duplicates.
+  case " $GETADDRINFO_LIB " in
+    *" $INET_NTOP_LIB "*) ;;
+    *) GETADDRINFO_LIB="$GETADDRINFO_LIB $INET_NTOP_LIB" ;;
   esac
 ])

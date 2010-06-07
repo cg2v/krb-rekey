@@ -1,5 +1,5 @@
-/* Copyright (C) 1991, 1993, 1995, 1997, 1998, 2003, 2006 Free Software
-   Foundation, Inc.
+/* Copyright (C) 1991, 1993, 1995, 1997-1998, 2003, 2006, 2009-2010 Free
+   Software Foundation, Inc.
 
    Contributed by Torbjorn Granlund (tege@sics.se).
 
@@ -25,6 +25,8 @@
 
 #include <string.h>
 
+#include <stdint.h>
+
 #undef memcmp
 
 #ifdef _LIBC
@@ -36,18 +38,18 @@
 #  define WORDS_BIGENDIAN
 # endif
 
-#else	/* Not in the GNU C library.  */
+#else   /* Not in the GNU C library.  */
 
 # include <sys/types.h>
 
 /* Type to use for aligned memory operations.
    This should normally be the biggest type supported by a single load
    and store.  Must be an unsigned type.  */
-# define op_t	unsigned long int
-# define OPSIZ	(sizeof(op_t))
+# define op_t   unsigned long int
+# define OPSIZ  (sizeof(op_t))
 
 /* Threshold value for when to enter the unrolled loops.  */
-# define OP_T_THRES	16
+# define OP_T_THRES     16
 
 /* Type to use for unaligned operations.  */
 typedef unsigned char byte;
@@ -58,7 +60,7 @@ typedef unsigned char byte;
 #  define MERGE(w0, sh_1, w1, sh_2) (((w0) << (sh_1)) | ((w1) >> (sh_2)))
 # endif
 
-#endif	/* In the GNU C library.  */
+#endif  /* In the GNU C library.  */
 
 #ifdef WORDS_BIGENDIAN
 # define CMP_LT_OR_GT(a, b) ((a) > (b) ? 1 : -1)
@@ -88,16 +90,16 @@ typedef unsigned char byte;
 __inline
 # endif
 static int
-memcmp_bytes (long unsigned int a, long unsigned int b)
+memcmp_bytes (op_t a, op_t b)
 {
-  long int srcp1 = (long int) &a;
-  long int srcp2 = (long int) &b;
+  const byte *srcp1 = (const byte *) &a;
+  const byte *srcp2 = (const byte *) &b;
   op_t a0, b0;
 
   do
     {
-      a0 = ((byte *) srcp1)[0];
-      b0 = ((byte *) srcp2)[0];
+      a0 = srcp1[0];
+      b0 = srcp2[0];
       srcp1 += 1;
       srcp2 += 1;
     }
@@ -109,11 +111,11 @@ memcmp_bytes (long unsigned int a, long unsigned int b)
 /* memcmp_common_alignment -- Compare blocks at SRCP1 and SRCP2 with LEN `op_t'
    objects (not LEN bytes!).  Both SRCP1 and SRCP2 should be aligned for
    memory operations on `op_t's.  */
-#ifdef	__GNUC__
+#ifdef __GNUC__
 __inline
 #endif
 static int
-memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
+memcmp_common_alignment (uintptr_t srcp1, uintptr_t srcp2, size_t len)
 {
   op_t a0, a1;
   op_t b0, b1;
@@ -137,7 +139,7 @@ memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
       goto do2;
     case 0:
       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
-	return 0;
+        return 0;
       a0 = ((op_t *) srcp1)[0];
       b0 = ((op_t *) srcp2)[0];
       goto do3;
@@ -148,7 +150,7 @@ memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
       srcp2 += OPSIZ;
       len -= 1;
       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
-	goto do0;
+        goto do0;
       /* Fall through.  */
     }
 
@@ -157,25 +159,25 @@ memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
       a0 = ((op_t *) srcp1)[0];
       b0 = ((op_t *) srcp2)[0];
       if (a1 != b1)
-	return CMP_LT_OR_GT (a1, b1);
+        return CMP_LT_OR_GT (a1, b1);
 
     do3:
       a1 = ((op_t *) srcp1)[1];
       b1 = ((op_t *) srcp2)[1];
       if (a0 != b0)
-	return CMP_LT_OR_GT (a0, b0);
+        return CMP_LT_OR_GT (a0, b0);
 
     do2:
       a0 = ((op_t *) srcp1)[2];
       b0 = ((op_t *) srcp2)[2];
       if (a1 != b1)
-	return CMP_LT_OR_GT (a1, b1);
+        return CMP_LT_OR_GT (a1, b1);
 
     do1:
       a1 = ((op_t *) srcp1)[3];
       b1 = ((op_t *) srcp2)[3];
       if (a0 != b0)
-	return CMP_LT_OR_GT (a0, b0);
+        return CMP_LT_OR_GT (a0, b0);
 
       srcp1 += 4 * OPSIZ;
       srcp2 += 4 * OPSIZ;
@@ -194,11 +196,11 @@ memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
 /* memcmp_not_common_alignment -- Compare blocks at SRCP1 and SRCP2 with LEN
    `op_t' objects (not LEN bytes!).  SRCP2 should be aligned for memory
    operations on `op_t', but SRCP1 *should be unaligned*.  */
-#ifdef	__GNUC__
+#ifdef __GNUC__
 __inline
 #endif
 static int
-memcmp_not_common_alignment (long int srcp1, long int srcp2, size_t len)
+memcmp_not_common_alignment (uintptr_t srcp1, uintptr_t srcp2, size_t len)
 {
   op_t a0, a1, a2, a3;
   op_t b0, b1, b2, b3;
@@ -235,7 +237,7 @@ memcmp_not_common_alignment (long int srcp1, long int srcp2, size_t len)
       goto do2;
     case 0:
       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
-	return 0;
+        return 0;
       a3 = ((op_t *) srcp1)[0];
       a0 = ((op_t *) srcp1)[1];
       b0 = ((op_t *) srcp2)[0];
@@ -249,7 +251,7 @@ memcmp_not_common_alignment (long int srcp1, long int srcp2, size_t len)
       srcp2 += 1 * OPSIZ;
       len -= 1;
       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
-	goto do0;
+        goto do0;
       /* Fall through.  */
     }
 
@@ -259,28 +261,28 @@ memcmp_not_common_alignment (long int srcp1, long int srcp2, size_t len)
       b0 = ((op_t *) srcp2)[0];
       x = MERGE(a2, shl, a3, shr);
       if (x != b3)
-	return CMP_LT_OR_GT (x, b3);
+        return CMP_LT_OR_GT (x, b3);
 
     do3:
       a1 = ((op_t *) srcp1)[1];
       b1 = ((op_t *) srcp2)[1];
       x = MERGE(a3, shl, a0, shr);
       if (x != b0)
-	return CMP_LT_OR_GT (x, b0);
+        return CMP_LT_OR_GT (x, b0);
 
     do2:
       a2 = ((op_t *) srcp1)[2];
       b2 = ((op_t *) srcp2)[2];
       x = MERGE(a0, shl, a1, shr);
       if (x != b1)
-	return CMP_LT_OR_GT (x, b1);
+        return CMP_LT_OR_GT (x, b1);
 
     do1:
       a3 = ((op_t *) srcp1)[3];
       b3 = ((op_t *) srcp2)[3];
       x = MERGE(a1, shl, a2, shr);
       if (x != b2)
-	return CMP_LT_OR_GT (x, b2);
+        return CMP_LT_OR_GT (x, b2);
 
       srcp1 += 4 * OPSIZ;
       srcp2 += 4 * OPSIZ;
@@ -302,36 +304,36 @@ rpl_memcmp (const void *s1, const void *s2, size_t len)
 {
   op_t a0;
   op_t b0;
-  long int srcp1 = (long int) s1;
-  long int srcp2 = (long int) s2;
+  uintptr_t srcp1 = (uintptr_t) s1;
+  uintptr_t srcp2 = (uintptr_t) s2;
   op_t res;
 
   if (len >= OP_T_THRES)
     {
       /* There are at least some bytes to compare.  No need to test
-	 for LEN == 0 in this alignment loop.  */
+         for LEN == 0 in this alignment loop.  */
       while (srcp2 % OPSIZ != 0)
-	{
-	  a0 = ((byte *) srcp1)[0];
-	  b0 = ((byte *) srcp2)[0];
-	  srcp1 += 1;
-	  srcp2 += 1;
-	  res = a0 - b0;
-	  if (res != 0)
-	    return res;
-	  len -= 1;
-	}
+        {
+          a0 = ((byte *) srcp1)[0];
+          b0 = ((byte *) srcp2)[0];
+          srcp1 += 1;
+          srcp2 += 1;
+          res = a0 - b0;
+          if (res != 0)
+            return res;
+          len -= 1;
+        }
 
       /* SRCP2 is now aligned for memory operations on `op_t'.
-	 SRCP1 alignment determines if we can do a simple,
-	 aligned compare or need to shuffle bits.  */
+         SRCP1 alignment determines if we can do a simple,
+         aligned compare or need to shuffle bits.  */
 
       if (srcp1 % OPSIZ == 0)
-	res = memcmp_common_alignment (srcp1, srcp2, len / OPSIZ);
+        res = memcmp_common_alignment (srcp1, srcp2, len / OPSIZ);
       else
-	res = memcmp_not_common_alignment (srcp1, srcp2, len / OPSIZ);
+        res = memcmp_not_common_alignment (srcp1, srcp2, len / OPSIZ);
       if (res != 0)
-	return res;
+        return res;
 
       /* Number of bytes remaining in the interval [0..OPSIZ-1].  */
       srcp1 += len & -OPSIZ;
@@ -348,7 +350,7 @@ rpl_memcmp (const void *s1, const void *s2, size_t len)
       srcp2 += 1;
       res = a0 - b0;
       if (res != 0)
-	return res;
+        return res;
       len -= 1;
     }
 

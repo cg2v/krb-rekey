@@ -1,5 +1,5 @@
 # DO NOT EDIT! GENERATED AUTOMATICALLY!
-# Copyright (C) 2002-2008 Free Software Foundation, Inc.
+# Copyright (C) 2002-2010 Free Software Foundation, Inc.
 #
 # This file is free software, distributed under the terms of the GNU
 # General Public License.  As a special exception to the GNU General
@@ -57,7 +57,9 @@ AC_DEFUN([gl_INIT],
   gl_MATH_MODULE_INDICATOR([frexpl])
   gl_GETADDRINFO
   gl_NETDB_MODULE_INDICATOR([getaddrinfo])
-  gl_GETOPT
+  gl_FUNC_GETOPT_GNU
+  gl_MODULE_INDICATOR([getopt-gnu])
+  gl_FUNC_GETOPT_POSIX
   AC_SUBST([LIBINTL])
   AC_SUBST([LTLIBINTL])
   gl_HOSTENT
@@ -70,6 +72,8 @@ AC_DEFUN([gl_INIT],
   gl_STDLIB_MODULE_INDICATOR([malloc-posix])
   gl_MALLOCA
   gl_MATH_H
+  gl_FUNC_MEMCHR
+  gl_STRING_MODULE_INDICATOR([memchr])
   gl_FUNC_MEMCMP
   gl_FUNC_MEMSET
   gl_MULTIARCH
@@ -82,6 +86,8 @@ AC_DEFUN([gl_INIT],
   m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
   gl_FUNC_REALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([realloc-posix])
+  gl_FUNC_SELECT
+  gl_SYS_SELECT_MODULE_INDICATOR([select])
   gl_SERVENT
   gl_FUNC_SETENV
   gl_STDLIB_MODULE_INDICATOR([setenv])
@@ -91,10 +97,12 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_SNPRINTF
   gl_STDIO_MODULE_INDICATOR([snprintf])
   gl_FUNC_SNPRINTF_POSIX
+  gl_SOCKETS
   gl_TYPE_SOCKLEN_T
   gl_FUNC_SPRINTF_POSIX
   gl_STDIO_MODULE_INDICATOR([sprintf-posix])
   AM_STDBOOL_H
+  gl_STDDEF_H
   gl_STDINT_H
   gl_STDIO_H
   gl_STDLIB_H
@@ -104,7 +112,6 @@ AC_DEFUN([gl_INIT],
   gl_HEADER_SYS_SELECT
   AC_PROG_MKDIR_P
   gl_HEADER_SYS_SOCKET
-  gl_MODULE_INDICATOR([sys_socket])
   AC_PROG_MKDIR_P
   gl_HEADER_SYS_TIME_H
   AC_PROG_MKDIR_P
@@ -113,8 +120,8 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_VASPRINTF
   gl_STDIO_MODULE_INDICATOR([vasprintf])
   m4_ifdef([AM_XGETTEXT_OPTION],
-    [AM_XGETTEXT_OPTION([--flag=asprintf:2:c-format])
-     AM_XGETTEXT_OPTION([--flag=vasprintf:2:c-format])])
+    [AM_][XGETTEXT_OPTION([--flag=asprintf:2:c-format])
+     AM_][XGETTEXT_OPTION([--flag=vasprintf:2:c-format])])
   gl_FUNC_VASPRINTF_POSIX
   gl_WCHAR_H
   gl_XSIZE
@@ -140,7 +147,7 @@ AC_DEFUN([gl_INIT],
     if test -n "$gl_LIBOBJS"; then
       # Remove the extension.
       sed_drop_objext='s/\.o$//;s/\.obj$//'
-      for i in `for i in $gl_LIBOBJS; do echo "$i"; done | sed "$sed_drop_objext" | sort | uniq`; do
+      for i in `for i in $gl_LIBOBJS; do echo "$i"; done | sed -e "$sed_drop_objext" | sort | uniq`; do
         gl_libobjs="$gl_libobjs $i.$ac_objext"
         gl_ltlibobjs="$gl_ltlibobjs $i.lo"
       done
@@ -179,7 +186,7 @@ AC_DEFUN([gl_INIT],
     if test -n "$gltests_LIBOBJS"; then
       # Remove the extension.
       sed_drop_objext='s/\.o$//;s/\.obj$//'
-      for i in `for i in $gltests_LIBOBJS; do echo "$i"; done | sed "$sed_drop_objext" | sort | uniq`; do
+      for i in `for i in $gltests_LIBOBJS; do echo "$i"; done | sed -e "$sed_drop_objext" | sort | uniq`; do
         gltests_libobjs="$gltests_libobjs $i.$ac_objext"
         gltests_ltlibobjs="$gltests_ltlibobjs $i.lo"
       done
@@ -250,12 +257,16 @@ AC_DEFUN([gltests_LIBSOURCES], [
 # This macro records the list of files which have been installed by
 # gnulib-tool and may be removed by future gnulib-tool invocations.
 AC_DEFUN([gl_FILE_LIST], [
+  build-aux/arg-nonnull.h
   build-aux/link-warning.h
+  lib/alignof.h
   lib/alloca.c
   lib/alloca.in.h
   lib/arpa_inet.in.h
   lib/asnprintf.c
   lib/asprintf.c
+  lib/close-hook.c
+  lib/close-hook.h
   lib/errno.in.h
   lib/float+.h
   lib/float.in.h
@@ -283,6 +294,8 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/malloca.h
   lib/malloca.valgrind
   lib/math.in.h
+  lib/memchr.c
+  lib/memchr.valgrind
   lib/memcmp.c
   lib/memset.c
   lib/netdb.in.h
@@ -298,14 +311,18 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/printf-parse.c
   lib/printf-parse.h
   lib/realloc.c
+  lib/select.c
   lib/setenv.c
   lib/signbitd.c
   lib/signbitf.c
   lib/signbitl.c
   lib/size_max.h
   lib/snprintf.c
+  lib/sockets.c
+  lib/sockets.h
   lib/sprintf.c
   lib/stdbool.in.h
+  lib/stddef.in.h
   lib/stdint.in.h
   lib/stdio-write.c
   lib/stdio.in.h
@@ -319,8 +336,10 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/vasnprintf.c
   lib/vasnprintf.h
   lib/vasprintf.c
+  lib/w32sock.h
   lib/wchar.in.h
   lib/xsize.h
+  m4/00gnulib.m4
   m4/alloca.m4
   m4/arpa_inet_h.m4
   m4/eealloc.m4
@@ -350,8 +369,10 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/malloc.m4
   m4/malloca.m4
   m4/math_h.m4
+  m4/memchr.m4
   m4/memcmp.m4
   m4/memset.m4
+  m4/mmap-anon.m4
   m4/multiarch.m4
   m4/netdb_h.m4
   m4/netinet_in_h.m4
@@ -361,16 +382,19 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/printf-frexpl.m4
   m4/printf.m4
   m4/realloc.m4
+  m4/select.m4
   m4/servent.m4
   m4/setenv.m4
   m4/signbit.m4
   m4/size_max.m4
   m4/snprintf-posix.m4
   m4/snprintf.m4
+  m4/sockets.m4
   m4/socklen.m4
   m4/sockpfaf.m4
   m4/sprintf-posix.m4
   m4/stdbool.m4
+  m4/stddef_h.m4
   m4/stdint.m4
   m4/stdint_h.m4
   m4/stdio_h.m4

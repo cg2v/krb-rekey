@@ -1,19 +1,20 @@
-# poll.m4 serial 7
-dnl Copyright (c) 2003, 2005, 2006, 2007 Free Software Foundation, Inc.
+# poll.m4 serial 9
+dnl Copyright (c) 2003, 2005, 2006, 2007, 2009, 2010 Free Software Foundation,
+dnl Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
 
 AC_DEFUN([gl_FUNC_POLL],
 [
-  AC_CHECK_HEADERS(poll.h)
+  AC_CHECK_HEADERS([poll.h])
   if test "$ac_cv_header_poll_h" = no; then
     gl_cv_func_poll=no
   else
-    AC_CHECK_FUNC(poll,
+    AC_CHECK_FUNC([poll],
       [# Check whether poll() works on special files (like /dev/null) and
        # and ttys (like /dev/tty). On MacOS X 10.4.0 and AIX 5.3, it doesn't.
-       AC_TRY_RUN([
+       AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <fcntl.h>
 #include <poll.h>
          int main()
@@ -39,7 +40,7 @@ AC_DEFUN([gl_FUNC_POLL],
              return 1;
            /* Trying /dev/tty may be too environment dependent.  */
            return 0;
-         }],
+         }]])],
          [gl_cv_func_poll=yes],
          [gl_cv_func_poll=no],
          [# When cross-compiling, assume that poll() works everywhere except on
@@ -51,12 +52,12 @@ This is MacOSX or AIX
 ], [gl_cv_func_poll=no], [gl_cv_func_poll=yes])])])
   fi
   if test $gl_cv_func_poll = yes; then
-    AC_DEFINE([HAVE_POLL], 1,
+    AC_DEFINE([HAVE_POLL], [1],
       [Define to 1 if you have the 'poll' function and it works.])
     POLL_H=
   else
-    AC_LIBOBJ(poll)
-    AC_DEFINE(poll, rpl_poll,
+    AC_LIBOBJ([poll])
+    AC_DEFINE([poll], [rpl_poll],
       [Define to poll if the replacement function should be used.])
     gl_PREREQ_POLL
     POLL_H=poll.h
@@ -67,5 +68,5 @@ This is MacOSX or AIX
 # Prerequisites of lib/poll.c.
 AC_DEFUN([gl_PREREQ_POLL],
 [
-  AC_CHECK_HEADERS_ONCE(sys/ioctl.h sys/filio.h)
+  AC_CHECK_HEADERS_ONCE([sys/ioctl.h sys/filio.h])
 ])
