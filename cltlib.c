@@ -68,6 +68,7 @@
 
 #include "memmgt.h"
 #include "rekey-locl.h"
+#include "rekeyclt-locl.h"
 #include "protocol.h"
 #include "krb5_portability.h"
 
