@@ -104,15 +104,15 @@ int enumerate_keytab(krb5_context ctx, krb5_keytab keytab,
 
 void print_krb5_error(krb5_context ctx, FILE *dest, char *pfx, 
 		      principal *target, krb5_error_code rc) {
+  const char *errtext;
 #if defined(HAVE_KRB5_GET_ERROR_MESSAGE) && defined(HAVE_DECL_KRB5_GET_ERROR_MESSAGE)
-  const char *errtext = krb5_get_error_message(ctx, rc);
+  errtext = krb5_get_error_message(ctx, rc);
 #else
-  char *errtext;
-  int dofree=0;
 #if defined(HAVE_KRB5_GET_ERROR_STRING) && defined(HAVE_DECL_KRB5_GET_ERROR_STRING)
+  char *free_err=NULL;
   if (krb5_have_error_string(ctx)) {
-    errtext = krb5_get_error_string(ctx);
-    dofree=1;
+    free_err = krb5_get_error_string(ctx);
+    errtext = free_err;
   } else 
 #endif
     errtext = krb5_get_err_text(ctx, rc);
@@ -126,8 +126,8 @@ void print_krb5_error(krb5_context ctx, FILE *dest, char *pfx,
   krb5_free_error_message(ctx, errtext);
 #else
 #if defined(HAVE_KRB5_GET_ERROR_STRING) && defined(HAVE_DECL_KRB5_GET_ERROR_STRING)
-  if (dofree)
-    krb5_free_error_string(ctx, errtext);
+  if (free_err)
+    krb5_free_error_string(ctx, free_err);
 #endif
 #endif
 }
