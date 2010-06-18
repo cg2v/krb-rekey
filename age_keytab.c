@@ -215,11 +215,24 @@ int get_correct_vno(krb5_context ctx, krb5_keytab kt,
     goto cleanup;
   }
 
-  princ_to_check->kdc_vno = ticket->enc_part.kvno;
 #ifdef HAVE_KRB5_TICKET_ENC_PART2
+  princ_to_check->kdc_vno = ticket->enc_part.kvno;
   princ_to_check->est_lifetime = ticket->enc_part2->times.endtime - 
     ticket->enc_part2->times.authtime;
 #else
+  {
+      Ticket enc_tkt;
+      size_t out_len;
+      rc = decode_Ticket(outcr->ticket.data, outcr->ticket.length,
+                         &enc_tkt, &out_len);
+      if (rc) {
+        print_krb5_error(ctx, stderr, "Internal error (Cannot parse encrypted ticket)", NULL, rc);
+        goto cleanup;
+      }
+      princ_to_check->kdc_vno = enc_tkt.enc_part.kvno ? 
+         *enc_tkt.enc_part.kvno : 0;
+   }
+      
   princ_to_check->est_lifetime = ticket->ticket.endtime - 
     ticket->ticket.authtime;
 #endif
