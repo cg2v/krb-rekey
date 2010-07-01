@@ -168,6 +168,55 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
   return 0;
 }
 #endif
+krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
+{
+  krb5_keytab kt=NULL;
+  char *ktdef=NULL, *ktname=NULL;
+  int rc;
+
+  if (!keytab) {
+    ktdef=malloc(BUFSIZ);
+    if (!ktdef) {
+      fatal("Memory allocation failed: %s", strerror(errno));
+    } 
+    rc = krb5_kt_default_name(ctx, ktdef, BUFSIZ);
+    if (rc) {
+      prtmsg("krb5_kt_default_name failed (%s)", krb5_get_err_text(ctx, rc));
+      goto out;
+    }   
+    keytab = ktdef;
+  }
+  
+  if (!strncmp(keytab, "FILE:", 5))
+    keytab=&keytab[5];
+  if (!strchr(keytab, ':')) {
+    ktname = malloc(8 + strlen(keytab));
+    if (!ktname) {
+      fatal("Memory allocation failed: %s", strerror(errno));
+    } 
+    sprintf(ktname, "WRFILE:%s", keytab);
+    rc = krb5_kt_resolve(ctx, ktname, &kt);
+    if (rc) {
+      sprintf(ktname, "FILE:%s", keytab);
+      rc = krb5_kt_resolve(ctx, ktname, &kt);
+      if (rc) {
+        prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
+        goto out;
+      }
+    } 
+  } else {
+    rc = krb5_kt_resolve(ctx, keytab, &kt);
+    if (rc) {
+      prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
+      goto out;
+    }
+  }
+ out:
+  free(ktdef);
+  free(ktname);
+  return kt;
+}
+
 
 int get_keytab_targets(char *keytab, int *n, char ***out) 
 {
@@ -183,14 +232,9 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
     prtmsg("krb5_init_context failed: %d", rc);
     return 1;
   }
-  if (keytab) 
-    rc = krb5_kt_resolve(ctx, keytab, &kt);
-  else
-    rc = krb5_kt_default(ctx, &kt);
-  if (rc) {
-    prtmsg("cannot get keytab: %s", krb5_get_err_text(ctx, rc));
+  kt = get_keytab(ctx, keytab);
+  if (!kt)
     goto freeall;
-  }
   alloc=5;
   princs=malloc(alloc * sizeof(char *));
   if (!princs) {
@@ -829,55 +873,6 @@ static int g_complete(void *vctx, char *principal, int kvno)
   }
   buf_free(commitbuf);
   return 0;
-}
-
-krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
-{
-  krb5_keytab kt=NULL;
-  char *ktdef=NULL, *ktname=NULL;
-  int rc;
-
-  if (!keytab) {
-    ktdef=malloc(BUFSIZ);
-    if (!ktdef) {
-      fatal("Memory allocation failed: %s", strerror(errno));
-    } 
-    rc = krb5_kt_default_name(ctx, ktdef, BUFSIZ);
-    if (rc) {
-      prtmsg("krb5_kt_default_name failed (%s)", krb5_get_err_text(ctx, rc));
-      goto out;
-    }   
-    keytab = ktdef;
-  }
-  
-  if (!strncmp(keytab, "FILE:", 5))
-    keytab=&keytab[5];
-  if (!strchr(keytab, ':')) {
-    ktname = malloc(8 + strlen(keytab));
-    if (!ktname) {
-      fatal("Memory allocation failed: %s", strerror(errno));
-    } 
-    sprintf(ktname, "WRFILE:%s", keytab);
-    rc = krb5_kt_resolve(ctx, ktname, &kt);
-    if (rc) {
-      sprintf(ktname, "FILE:%s", keytab);
-      rc = krb5_kt_resolve(ctx, ktname, &kt);
-      if (rc) {
-        prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
-        goto out;
-      }
-    } 
-  } else {
-    rc = krb5_kt_resolve(ctx, keytab, &kt);
-    if (rc) {
-      prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
-      goto out;
-    }
-  }
- out:
-  free(ktdef);
-  free(ktname);
-  return kt;
 }
 
 
