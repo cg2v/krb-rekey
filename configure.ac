@@ -150,7 +150,7 @@ AC_CHECK_TYPES([krb5_realm], , , [#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree])
+AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree error_message])
 AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
@@ -161,7 +161,9 @@ if test "X$ac_cv_func_krb5_get_err_text" = "Xno"; then
    if test "X$have_com_err" = "Xno"; then
       AC_MSG_ERROR([No com_err headers found, and krb5 doesn't provide krb5_get_err_text])
    else
-      AC_CHECK_LIB([com_err], [error_message], [LIB_COM_ERR=-lcom_err], [AC_MSG_ERROR([No com_err library found, and krb5 doesn't provide krb5_get_err_text])])
+      if test "X$ac_cv_func_error_message" = "Xno"; then
+         AC_CHECK_LIB([com_err], [error_message], [LIB_COM_ERR=-lcom_err], [AC_MSG_ERROR([No com_err library found, and krb5 doesn't provide krb5_get_err_text])])
+      fi
    fi
 fi
 AC_SUBST([LIB_COM_ERR])
