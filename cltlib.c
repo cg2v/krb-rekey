@@ -60,6 +60,7 @@
 #endif
 #ifdef HEADER_GSSAPI_GSSAPI
 #include <gssapi/gssapi.h>
+#include <gssapi/gssapi_krb5.h>
 #else
 #include <gssapi.h>
 #endif
@@ -340,6 +341,7 @@ void c_auth(SSL *ssl, char *hostname) {
  gss_ctx_id_t gctx=GSS_C_NO_CONTEXT;
  gss_buffer_desc inname, in, out;
  gss_buffer_t inp=GSS_C_NO_BUFFER;
+ gss_OID_desc reqmech;
  gss_OID mech;
  int gss_more_init=1,gss_more_accept=1, flen;
  int resp=0;
@@ -363,9 +365,21 @@ void c_auth(SSL *ssl, char *hostname) {
  }
      
  memset(&out, 0, sizeof(out));
+ reqmech.length = gss_mech_krb5->length;
+ reqmech.elements = malloc(reqmech.length);
+ memcpy(reqmech.elements, gss_mech_krb5->elements, reqmech.length);
+ if (!reqmech.elements) {
+   c_close(ssl);
+   fatal("Cannot allocate memory");
+ }   
  do {
+   /* can't use GSS_C_NO_OID with GSS_C_NO_CREDENTIAL on solaris */
+   /* Should be using gss_indicate_mechs and iterating, but
+      that would require major refactoring of this function, and it
+      is questionable whether the server would deal correctly,
+      especially as it currently exits after receiving OP_AUTHERR */
    maj = gss_init_sec_context(&min, GSS_C_NO_CREDENTIAL, &gctx,
-                              n, GSS_C_NO_OID, 
+                              n, &reqmech, 
                               GSS_C_MUTUAL_FLAG | GSS_C_INTEG_FLAG,
                               0, GSS_C_NO_CHANNEL_BINDINGS,
                               inp, &mech, &out, &rflag, NULL);
@@ -374,7 +388,7 @@ void c_auth(SSL *ssl, char *hostname) {
      inp->value=0;
    }
    if (GSS_ERROR(maj)) {
-     prt_gss_error(mech, maj, min);
+     prt_gss_error(mech ? mech : &reqmech, maj, min);
      gss_more_init=0;
    } else {
      if (!(maj & GSS_S_CONTINUE_NEEDED)) {
@@ -416,6 +430,7 @@ void c_auth(SSL *ssl, char *hostname) {
        c_close(ssl);
        fatal("internal error: cannot pack authentication structure");
      }
+     gss_release_buffer(&min, &out);
      resp = sendrcv(ssl, GSS_ERROR(maj) ? OP_AUTHERR : OP_AUTH, auth);
      if (resp == RESP_ERR || resp == RESP_FATAL) {
        c_close(ssl);
@@ -546,6 +561,7 @@ void c_auth(SSL *ssl, char *hostname) {
    exit(1);
  }
  free(in.value);
+ free(reqmech.elements);
  gss_delete_sec_context(&min, &gctx, GSS_C_NO_BUFFER);
  gss_release_name(&min, &n);
 }

@@ -229,7 +229,7 @@ void do_gss_error(gss_OID mech, OM_uint32 errmaj, OM_uint32 errmin,
           do {
                maj_status = gss_display_status (
                     &min_status,
-                    errmaj,
+                    errmin,
                     GSS_C_MECH_CODE,
                     mech,
                     &message_context,
