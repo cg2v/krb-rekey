@@ -58,11 +58,11 @@
 #else
 #include <krb5/krb5.h>
 #endif
-#ifdef HEADER_GSSAPI_GSSAPI
+#ifdef USE_GSSAPI_H
+#include <gssapi.h>
+#else
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_krb5.h>
-#else
-#include <gssapi.h>
 #endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>

@@ -66,7 +66,7 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([fcntl.h memory.h netdb.h])
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
-AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_krb5.h], [AC_DEFINE([HEADER_GSSAPI_GSSAPI],[],[Define if mit-style gss headers are in use])], [AC_CHECK_HEADERS([gssapi.h],[],[AC_MSG_ERROR([No GSSAPI headers found])])])
+AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_krb5.h], [], [AC_CHECK_HEADERS([gssapi.h],[AC_DEFINE([USE_GSSAPI_H],[],[Use heimdal-style <gssapi.h>, not <gssapi/gssapi_*.h>])],[AC_MSG_ERROR([No GSSAPI headers found])])])
 AC_CHECK_HEADERS([krb5.h],[],[AC_CHECK_HEADERS([krb5/krb5.h],[],[AC_MSG_ERROR([No krb5 headers found])])])
 AC_CHECK_HEADERS([com_err.h],[],[AC_CHECK_HEADERS([et/com_err.h],[],[no_com_err=yes])])
 if test "$build_server" = "yes"; then

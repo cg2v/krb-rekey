@@ -67,7 +67,7 @@
 #include "protocol.h"
 #include "memmgt.h"
 
-#ifdef HEADER_GSSAPI_GSSAPI
+#ifndef USE_GSSAPI_H
 #include <gssapi/gssapi_krb5.h>
 #endif
 

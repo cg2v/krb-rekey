@@ -48,10 +48,10 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <openssl/ssl.h>
-#ifdef HEADER_GSSAPI_GSSAPI
-#include <gssapi/gssapi.h>
-#else
+#ifdef USE_GSSAPI_H
 #include <gssapi.h>
+#else
+#include <gssapi/gssapi.h>
 #endif
 
 #include "memmgt.h"
