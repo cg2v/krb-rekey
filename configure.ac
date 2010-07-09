@@ -145,13 +145,13 @@ save_LIBS="$LIBS"
 LIBS="$LIB_KRB5 $LIBS"
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
-AC_CHECK_TYPES([krb5_realm], , , [#ifdef HAVE_KRB5_H
+AC_CHECK_TYPES([krb5_realm, krb5_kt_ops], , , [#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree error_message])
-AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree],[],[],[#ifdef HAVE_KRB5_H
+AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree krb5_kt_register error_message])
+AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>
@@ -192,6 +192,34 @@ AC_MSG_RESULT([$x_krb5_princ_realm])
 if test X$x_krb5_princ_realm = Xyes; then
   AC_DEFINE([HAVE_KRB5_PRINC_REALM], [], [Define if krb5_princ_realm function/macro is available])
 fi
+AC_MSG_CHECKING([for krb5_ktf_writable_ops])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_KRB5_H
+#include <krb5.h>
+#else
+#include <krb5/krb5.h>
+#endif
+#ifdef HAVE_KRB5_KT_OPS
+#if defined(HAVE_DECL_KRB5_KT_REGISTER) && !HAVE_DECL_KRB5_KT_REGISTER
+krb5_error_code krb5_kt_register(krb5_context, krb5_kt_ops *);
+#endif
+#if defined(HAVE_DECL_KRB5_KTF_WRITABLE_OPS) && !HAVE_DECL_KRB5_KTF_WRITABLE_OPS
+extern krb5_kt_ops *krb5_ktf_writable_ops;
+#endif
+#endif
+]], [[#if !defined(HAVE_KRB5_KT_OPS) || !defined(HAVE_KRB5_KT_REGISTER)
+#error Missing prerequisites for dynamic keytab backends - WRFILE must be built-in
+#else
+krb5_context c = 0;
+krb5_kt_register(c, krb5_ktf_writable_ops);
+#endif]])],
+[ktf_writable_ops="yes"],[ktf_writable_ops="no"])
+AC_MSG_RESULT([$ktf_writable_ops])
+if test X$ktf_writable_ops = Xyes; then 
+	AC_DEFINE([HAVE_KRB5_KT_WRITABLE_OPS], [], 
+[Define if the krb5_ktf_writable_ops struct is available])
+fi
+
+
 if test "$build_server" = "yes"; then
 LIBS="$LIB_KADMS $save_LIBS"
 AC_MSG_CHECKING([for compatible kadm5_init_with_skey_ctx])
