@@ -720,6 +720,78 @@ void c_status(SSL *ssl, char *princ) {
   buf_free(buf);
 }
 
+static struct ok_enctype_s {
+  krb5_enctype min;
+  krb5_enctype max;
+} ok_enctypes[] = {
+#ifdef ENCTYPE_DES_CBC_CRC
+  { ENCTYPE_DES_CBC_CRC,  ENCTYPE_DES_CBC_MD5},
+#endif
+#ifdef ENCTYPE_DES3_CBC_SHA1
+  { ENCTYPE_DES3_CBC_SHA1, ENCTYPE_DES3_CBC_SHA1},
+#endif
+#ifdef ENCTYPE_ARCFOUR_HMAC
+  { ENCTYPE_ARCFOUR_HMAC, ENCTYPE_ARCFOUR_HMAC_EXP},
+#endif
+#ifdef ENCTYPE_AES128_CTS_HMAC_SHA1_96
+#ifdef ENCTYPE_AES256_CTS_HMAC_SHA1_96
+  { ENCTYPE_AES128_CTS_HMAC_SHA1_96, ENCTYPE_AES256_CTS_HMAC_SHA1_96},
+#else
+  { ENCTYPE_AES128_CTS_HMAC_SHA1_96, ENCTYPE_AES128_CTS_HMAC_SHA1_96},
+#endif
+#endif
+  {0, 0}
+};  
+
+static int scan_for_bad_keys(mb_t buf) {
+  unsigned int m, n, l, i, j, et, ok, kvno; 
+  char *principal=NULL;
+  struct ok_enctype_s *ok_et;
+
+  reset_cursor(buf);  
+  if (buf_getint(buf, &m)) {
+    prtmsg("Server sent malformed reply");
+    goto out;
+  }
+  for (i=0; i < m; i++) {
+    if (buf_getstring(buf, &principal, malloc)) {
+      prtmsg("Server sent malformed reply (or memory allocation failed)");
+      goto out;
+    } 
+    if (buf_getint(buf, &kvno) ||
+	buf_getint(buf, &n)){
+      prtmsg("Server sent malformed reply");
+      goto out;
+    } 
+    for (j=0; j < n; j++) {
+      if (buf_getint(buf, &et) ||
+	  buf_getint(buf, &l)) {
+	prtmsg("Server sent malformed reply");
+	goto out;
+      } 
+      ok = 0;
+      for (ok_et=ok_enctypes; ok_et->min > 0; ok_et++) {
+	if (et >= ok_et->min && et <= ok_et->max) {
+	  ok=1;
+	  break;
+	}
+      }
+      if (ok == 0) {
+	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
+	return 1;
+      }
+      buf->cursor+=l;
+      continue;
+    }
+    free(principal);
+    principal=NULL;
+  }
+  return 0;
+ out:
+  if (principal)
+    free(principal);
+  return 1;
+}
 
 static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf, 
                         int (*complete)(void *rock, char *principal, int kvno),
@@ -922,7 +994,9 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
     prtmsg("Unexpected reply type %d from server", resp);
     goto out;
   }
-  is_error = process_keys(ctx, kt, buf, g_complete, ssl);
+  is_error = scan_for_bad_keys(buf);
+  if (is_error == 0)
+    is_error = process_keys(ctx, kt, buf, g_complete, ssl);
   
 
  out:
@@ -1070,7 +1144,9 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
   }
 
   done=0;
-  if (process_keys(ctx, kt, buf, count_complete, &done) || done == 0)
+  if (scan_for_bad_keys(buf) ||
+      process_keys(ctx, kt, buf, count_complete, &done) || 
+      done == 0)
     c_abort(ssl, princ);
   else
     c_finalize(ssl, princ);
