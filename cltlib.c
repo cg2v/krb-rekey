@@ -127,8 +127,8 @@ char *get_server(char *realm) {
     goto out;
   sprintf(ret, "rekey.%s", realm);
   for (i=0;i<strlen(ret);i++) {
-    if (isalpha(ret[i]) && isupper(ret[i]))
-      ret[i]=tolower(ret[i]);
+    if (isalpha((unsigned char)ret[i]) && isupper((unsigned char)ret[i]))
+      ret[i]=tolower((unsigned char)ret[i]);
   }
  out:
   if (intrealm) {
@@ -197,12 +197,19 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
     sprintf(ktname, "WRFILE:%s", keytab);
     rc = krb5_kt_resolve(ctx, ktname, &kt);
     if (rc) {
-      sprintf(ktname, "FILE:%s", keytab);
-      rc = krb5_kt_resolve(ctx, ktname, &kt);
-      if (rc) {
-        prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
-        goto out;
+#ifdef HAVE_KRB5_KTF_WRITABLE_OPS
+      rc = krb5_kt_register(ctx, krb5_ktf_writable_ops);
+      if (rc != 0 || rc = krb5_kt_resolve(ctx, ktname, &kt)) {
+#endif
+	sprintf(ktname, "FILE:%s", keytab);
+	rc = krb5_kt_resolve(ctx, ktname, &kt);
+	if (rc) {
+	  prtmsg("krb5_kt_resolve failed (%s)", krb5_get_err_text(ctx, rc));
+	  goto out;
+	}
+#ifdef HAVE_KRB5_KTF_WRITABLE_OPS
       }
+#endif
     } 
   } else {
     rc = krb5_kt_resolve(ctx, keytab, &kt);
