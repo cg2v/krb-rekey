@@ -38,7 +38,3 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 #if defined(HAVE_KRB5_C_MAKE_RANDOM_KEY) && !defined(HAVE_KRB5_GENERATE_RANDOM_KEYBLOCK)
 #define krb5_generate_random_keyblock krb5_c_make_random_key
 #endif
-/* krb5_enctype_valid does return a boolean despite using krb5_error_code */
-#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
-#define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
-#endif
