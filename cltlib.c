@@ -729,7 +729,7 @@ static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
 	prtmsg("Server sent malformed reply");
 	goto out;
       } 
-      if (!krb5_c_valid_enctype(ctx, et)) {
+      if (!krb5_c_valid_enctype(et)) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
 	return 1;
       }
