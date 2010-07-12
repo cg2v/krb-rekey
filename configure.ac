@@ -215,7 +215,7 @@ krb5_kt_register(c, krb5_ktf_writable_ops);
 [ktf_writable_ops="yes"],[ktf_writable_ops="no"])
 AC_MSG_RESULT([$ktf_writable_ops])
 if test X$ktf_writable_ops = Xyes; then 
-	AC_DEFINE([HAVE_KRB5_KT_WRITABLE_OPS], [], 
+	AC_DEFINE([HAVE_KRB5_KTF_WRITABLE_OPS], [], 
 [Define if the krb5_ktf_writable_ops struct is available])
 fi
 
