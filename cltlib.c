@@ -142,32 +142,6 @@ char *get_server(char *realm) {
   return ret;
 }
 
-#ifdef HAVE_KRB5_KEYBLOCK_ENCTYPE
-#define Z_keydata(keyblock)     ((keyblock)->contents)
-#define Z_keylen(keyblock)      ((keyblock)->length)
-#define Z_enctype(keyblock)     ((keyblock)->enctype)
-#else
-#define Z_keydata(keyblock)     ((keyblock)->keyvalue.data)
-#define Z_keylen(keyblock)      ((keyblock)->keyvalue.length)
-#define Z_enctype(keyblock)     ((keyblock)->keytype)
-#endif
-#ifdef HAVE_KRB5_KEYTAB_ENTRY_KEYBLOCK
-#define kte_keyblock(kte) (&(kte)->keyblock)
-#else
-#define kte_keyblock(kte) (&(kte)->key)
-#endif
-#if defined(HAVE_KRB5_KT_FREE_ENTRY) && HAVE_DECL_KRB5_KT_FREE_ENTRY
-#define krb5_free_keytab_entry_contents krb5_kt_free_entry
-#elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
-/* nothing */
-#else
-static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
-                                                  krb5_keytab_entry *ent) {
-  krb5_free_principal(ctx, ent->principal);
-  krb5_free_keyblock_contents(ctx, kte_keyblock(ent));
-  return 0;
-}
-#endif
 krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
 {
   krb5_keytab kt=NULL;
@@ -727,33 +701,9 @@ void c_status(SSL *ssl, char *princ) {
   buf_free(buf);
 }
 
-static struct ok_enctype_s {
-  krb5_enctype min;
-  krb5_enctype max;
-} ok_enctypes[] = {
-#ifdef ENCTYPE_DES_CBC_CRC
-  { ENCTYPE_DES_CBC_CRC,  ENCTYPE_DES_CBC_MD5},
-#endif
-#ifdef ENCTYPE_DES3_CBC_SHA1
-  { ENCTYPE_DES3_CBC_SHA1, ENCTYPE_DES3_CBC_SHA1},
-#endif
-#ifdef ENCTYPE_ARCFOUR_HMAC
-  { ENCTYPE_ARCFOUR_HMAC, ENCTYPE_ARCFOUR_HMAC_EXP},
-#endif
-#ifdef ENCTYPE_AES128_CTS_HMAC_SHA1_96
-#ifdef ENCTYPE_AES256_CTS_HMAC_SHA1_96
-  { ENCTYPE_AES128_CTS_HMAC_SHA1_96, ENCTYPE_AES256_CTS_HMAC_SHA1_96},
-#else
-  { ENCTYPE_AES128_CTS_HMAC_SHA1_96, ENCTYPE_AES128_CTS_HMAC_SHA1_96},
-#endif
-#endif
-  {0, 0}
-};  
-
-static int scan_for_bad_keys(mb_t buf) {
-  unsigned int m, n, l, i, j, et, ok, kvno; 
+static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
+  unsigned int m, n, l, i, j, et, kvno; 
   char *principal=NULL;
-  struct ok_enctype_s *ok_et;
 
   reset_cursor(buf);  
   if (buf_getint(buf, &m)) {
@@ -776,14 +726,7 @@ static int scan_for_bad_keys(mb_t buf) {
 	prtmsg("Server sent malformed reply");
 	goto out;
       } 
-      ok = 0;
-      for (ok_et=ok_enctypes; ok_et->min > 0; ok_et++) {
-	if (et >= ok_et->min && et <= ok_et->max) {
-	  ok=1;
-	  break;
-	}
-      }
-      if (ok == 0) {
+      if (!krb5_enctype_valid(ctx, et)) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
 	return 1;
       }
@@ -1001,7 +944,7 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
     prtmsg("Unexpected reply type %d from server", resp);
     goto out;
   }
-  is_error = scan_for_bad_keys(buf);
+  is_error = scan_for_bad_keys(ctx, buf);
   if (is_error == 0)
     is_error = process_keys(ctx, kt, buf, g_complete, ssl);
   
@@ -1151,7 +1094,7 @@ void c_simplekey(SSL *ssl, char *princ, int flag, char *keytab)
   }
 
   done=0;
-  if (scan_for_bad_keys(buf) ||
+  if (scan_for_bad_keys(ctx, buf) ||
       process_keys(ctx, kt, buf, count_complete, &done) || 
       done == 0)
     c_abort(ssl, princ);
