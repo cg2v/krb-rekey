@@ -822,32 +822,32 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
       {
         krb5_keytab_entry cmpe;
         krb5_keyblock *cmp;
-        
+        krb5_enctype cmpet;
+	int bad=0;
+
         memset(&cmpe, 0, sizeof(cmpe));
 	rc = krb5_kt_get_entry(ctx, kt, ent.principal,
 				      ent.vno, et, &cmpe);
 	if (rc == 0) {
           cmp = kte_keyblock(&cmpe);
-	  if (Z_keylen(&key) != Z_keylen(cmp) ||
-	      memcmp(Z_keydata(&key), Z_keydata(cmp), Z_keylen(&key))) {
+	  if (Z_enctype(&key) == Z_enctype(cmp) &&
+	      (Z_keylen(&key) != Z_keylen(cmp) ||
+	       memcmp(Z_keydata(&key), Z_keydata(cmp), Z_keylen(&key)))) {
+	    bad=1;
 	    prtmsg("This keytab has an entry for principal %s, kvno %u, enctype %u with a different key!", 
 		   principal, kvno, et);
             rc = krb5_kt_remove_entry(ctx, kt, &cmpe);
-	    krb5_free_keytab_entry_contents(ctx, &cmpe);
 	    if (rc) {
               prtmsg("krb5_kt_remove_entry failed (%s)", krb5_get_err_text(ctx, rc));
-
-              free(Z_keydata(&key));
               goto out;
-              /* n_send_single=1; continue;*/
             }              
-	  } else {
-	    /* might not actually be for this enctype, so remove
-	     and readd even though the key is correct*/
-            krb5_kt_remove_entry(ctx, kt, &cmpe);
-            krb5_free_keytab_entry_contents(ctx, &cmpe);
-     
-          }
+	  } 
+	  cmpet = Z_enctype(cmp);
+	  krb5_free_keytab_entry_contents(ctx, &cmpe);
+	  /* don't add this new keytab entry if correct new key
+	     is already present */
+	  if (rc == 0 && bad == 0 && cmpet == et)
+	    continue;
         }  
       }
       
