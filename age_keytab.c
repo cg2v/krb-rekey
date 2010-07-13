@@ -105,10 +105,10 @@ int enumerate_keytab(krb5_context ctx, krb5_keytab keytab,
 void print_krb5_error(krb5_context ctx, FILE *dest, char *pfx, 
 		      principal *target, krb5_error_code rc) {
   const char *errtext;
-#if defined(HAVE_KRB5_GET_ERROR_MESSAGE) && defined(HAVE_DECL_KRB5_GET_ERROR_MESSAGE) && defined(HAVE_KRB5_FREE_ERROR_MESSAGE) && defined(HAVE_DECL_KRB5_FREE_ERROR_MESSAGE)
+#if HAVE_DECL_KRB5_GET_ERROR_MESSAGE && HAVE_DECL_KRB5_FREE_ERROR_MESSAGE
   errtext = krb5_get_error_message(ctx, rc);
 #else
-#if defined(HAVE_KRB5_GET_ERROR_STRING) && defined(HAVE_DECL_KRB5_GET_ERROR_STRING) && defined(HAVE_KRB5_FREE_ERROR_STRING) && defined(HAVE_DECL_FREE_KRB5_ERROR_STRING)
+#if HAVE_DECL_KRB5_GET_ERROR_STRING && HAVE_DECL_FREE_KRB5_ERROR_STRING
   char *free_err=NULL;
   if (krb5_have_error_string(ctx)) {
     free_err = krb5_get_error_string(ctx);
@@ -122,10 +122,10 @@ void print_krb5_error(krb5_context ctx, FILE *dest, char *pfx,
 	    pfx, target->print_name, errtext);
   else
     fprintf(dest, "%s: %s\n", pfx, errtext);
-#if defined(HAVE_KRB5_GET_ERROR_MESSAGE) && defined(HAVE_DECL_KRB5_GET_ERROR_MESSAGE) && defined(HAVE_KRB5_FREE_ERROR_MESSAGE) && defined(HAVE_DECL_KRB5_FREE_ERROR_MESSAGE)
+#if HAVE_DECL_KRB5_GET_ERROR_MESSAGE && HAVE_DECL_KRB5_FREE_ERROR_MESSAGE
   krb5_free_error_message(ctx, errtext);
 #else
-#if defined(HAVE_KRB5_GET_ERROR_STRING) && defined(HAVE_DECL_KRB5_GET_ERROR_STRING) && defined(HAVE_KRB5_FREE_ERROR_STRING) && defined(HAVE_DECL_FREE_KRB5_ERROR_STRING)
+#if HAVE_DECL_KRB5_GET_ERROR_STRING && HAVE_DECL_FREE_KRB5_ERROR_STRING
   if (free_err)
     krb5_free_error_string(ctx, free_err);
 #endif
@@ -261,7 +261,7 @@ void do_free_principals(krb5_context ctx, principal *princ_list) {
   for (;princ_list;princ_list=next) {
     next=princ_list->next;
     krb5_free_principal(ctx, princ_list->name);
-#ifdef HAVE_KRB5_FREE_UNPARSED_NAME
+#if HAVE_DECL_KRB5_FREE_UNPARSED_NAME
     krb5_free_unparsed_name(ctx, princ_list->print_name);
 #else
     krb5_xfree(princ_list->print_name);

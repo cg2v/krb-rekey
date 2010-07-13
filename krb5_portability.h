@@ -12,10 +12,10 @@
 #else
 #define kte_keyblock(kte) (&(kte)->key)
 #endif
-#if defined(HAVE_KRB5_KT_FREE_ENTRY) && HAVE_DECL_KRB5_KT_FREE_ENTRY
-#define krb5_free_keytab_entry_contents krb5_kt_free_entry
-#elif defined(HAVE_KRB5_FREE_KEYTAB_ENTRY_CONTENTS)
+#if HAVE_DECL_KRB5_FREE_KEYTAB_ENTRY_CONTENTS
 /* nothing */
+#elif HAVE_DECL_KRB5_KT_FREE_ENTRY
+#define krb5_free_keytab_entry_contents krb5_kt_free_entry
 #else
 static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
                                                   krb5_keytab_entry *ent) {
@@ -25,7 +25,7 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 }
 #endif
 
-#ifndef HAVE_KRB5_GET_ERR_TEXT
+#ifndef HAVE_DECL_KRB5_GET_ERR_TEXT
 #ifdef HAVE_COM_ERR_H
 #include <com_err.h>
 #else
@@ -35,10 +35,10 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 #endif
 #define krb5_get_err_text(c, r) error_message(r)
 #endif
-#if defined(HAVE_KRB5_C_MAKE_RANDOM_KEY) && !defined(HAVE_KRB5_GENERATE_RANDOM_KEYBLOCK)
+#if HAVE_DECL_KRB5_C_MAKE_RANDOM_KEY && !HAVE_DECL_KRB5_GENERATE_RANDOM_KEYBLOCK
 #define krb5_generate_random_keyblock krb5_c_make_random_key
 #endif
-#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#if defined(HAVE_DECL_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_DECL_KRB5_ENCTYPE_VALID)
 #define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
 #endif
 /* On old (pre-0.7) heimdal, krb5_enctype_valid returns a boolean,
