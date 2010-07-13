@@ -25,7 +25,7 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 }
 #endif
 
-#ifndef HAVE_DECL_KRB5_GET_ERR_TEXT
+#if !HAVE_DECL_KRB5_GET_ERR_TEXT
 #ifdef HAVE_COM_ERR_H
 #include <com_err.h>
 #else
