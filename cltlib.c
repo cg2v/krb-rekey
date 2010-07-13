@@ -702,7 +702,7 @@ void c_status(SSL *ssl, char *princ) {
 }
 
 static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
-#if defined(BROKEN_ENCTYPE_VALIDITY) || 
+#if defined(BROKEN_ENCTYPE_VALIDITY) || \
   (!defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID))
   return 0;
 #else

@@ -240,15 +240,15 @@ for (i=0; i < 32; i++) {
        got0=1;
     if (ret == 1)
        got1=1;
-    if (ret > 1)
+    if (ret < 0 || ret > 1)
        gotother=1;
 }
 if (got0 == 0)
   return 1;
 if ((got1 | gotother) == 0)
-  return 1;
+  return 2;
 if (got1 == gotother)
-  return 1;
+  return 3;
 return 0;]])], [ enctype_valid_works=yes ], [enctype_valid_works=no],
 [enctype_valid_works=cross-compiling-no])
 AC_MSG_RESULT([$enctype_valid_works])
@@ -261,10 +261,11 @@ if test $enctype_valid_works = yes; then
 #endif
 #if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
 #define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
-#endif]],[[krb5_context c; int i; 
+#endif]],[[krb5_context c; int i, ret; 
 if (krb5_init_context(&c)) return 1;
 for (i=0; i < 32; i++) {
-    if (krb5_enctype_valid(c, i) > 1)
+    ret=krb5_enctype_valid(c, i)
+    if (ret > 1 || ret < 0)
 	return 1;
 }
 return 0;]])], [ enctype_valid_type=boolean ], [enctype_valid_type=error_code],
