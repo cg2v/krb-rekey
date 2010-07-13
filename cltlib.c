@@ -142,6 +142,10 @@ char *get_server(char *realm) {
   return ret;
 }
 
+#if defined(HAVE_KRB5_KTF_WRITABLE_OPS) && !HAVE_DECL_KRB5_KTF_WRITABLE_OPS
+extern krb5_kt_ops *krb5_ktf_writable_ops;
+#endif
+
 krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
 {
   krb5_keytab kt=NULL;
@@ -703,7 +707,7 @@ void c_status(SSL *ssl, char *princ) {
 
 static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
 #if defined(BROKEN_ENCTYPE_VALIDITY) || \
-  (!defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID))
+  (! HAVE_DECL_KRB5_C_VALID_ENCTYPE && ! HAVE_DECL_KRB5_ENCTYPE_VALID)
   return 0;
 #else
   unsigned int m, n, l, i, j, et, kvno; 
