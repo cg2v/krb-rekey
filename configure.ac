@@ -150,15 +150,15 @@ AC_CHECK_TYPES([krb5_realm, krb5_kt_ops], , , [#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree krb5_kt_register error_message krb5_enctype_valid krb5_c_valid_enctype])
 AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops, krb5_enctype_valid, krb5_c_valid_enctype],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>
 #endif])
 LIB_COM_ERR=
-if test "X$ac_cv_func_krb5_get_err_text" = "Xno"; then
-   if test "X$have_com_err" = "Xno"; then
+if test "X$ac_cv_have_decl_krb5_get_err_text" = "Xno"; then
+   AC_CHECK_FUNCS([error_message])
+   if test "X$no_com_err" = "Xyes"; then
       AC_MSG_ERROR([No com_err headers found, and krb5 doesn't provide krb5_get_err_text])
    else
       if test "X$ac_cv_func_error_message" = "Xno"; then
@@ -229,7 +229,7 @@ AC_RUN_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif
-#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#if HAVE_DECL_KRB5_C_VALID_ENCTYPE && !HAVE_DECL_KRB5_ENCTYPE_VALID
 #define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
 #endif]],[[krb5_context c; int i; int ret; 
 int got0=0; int got1=0; int gotother=0;
@@ -259,7 +259,7 @@ if test $enctype_valid_works = yes; then
 #else
 #include <krb5/krb5.h>
 #endif
-#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#if HAVE_DECL_KRB5_C_VALID_ENCTYPE && !HAVE_DECL_KRB5_ENCTYPE_VALID
 #define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
 #endif]],[[krb5_context c; int i, ret; 
 if (krb5_init_context(&c)) return 1;

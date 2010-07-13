@@ -434,7 +434,7 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 	}
 	for (i=0; i< n_new_keys; i++)
 	  krb5_free_keyblock_contents(sess->kctx, &new_keys[i]);
-#ifdef HAVE_KRB5_XFREE
+#ifdef HAVE_DECL_KRB5_XFREE
 	krb5_xfree(new_keys);
 #else
 	/* This is evil, but there's no other way to free this
