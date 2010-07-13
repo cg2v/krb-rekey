@@ -150,7 +150,7 @@ AC_CHECK_TYPES([krb5_realm, krb5_kt_ops], , , [#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops, krb5_enctype_valid, krb5_c_valid_enctype],[],[],[#ifdef HAVE_KRB5_H
+AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops, krb5_enctype_valid, krb5_c_valid_enctype, ENCTYPE_DES_CBC_CRC, ENCTYPE_DES3_CBC_SHA1, ENCTYPE_AES128_CTS_HMAC_SHA1_96, ENCTYPE_AES256_CTS_HMAC_SHA1_96, ENCTYPE_ARCFOUR_HMAC],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>
