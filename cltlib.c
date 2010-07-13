@@ -702,7 +702,8 @@ void c_status(SSL *ssl, char *princ) {
 }
 
 static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
-#ifndef HAVE_KRB5_C_VALID_ENCTYPE
+#if defined(BROKEN_ENCTYPE_VALIDITY) || 
+  (!defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID))
   return 0;
 #else
   unsigned int m, n, l, i, j, et, kvno; 
@@ -729,7 +730,7 @@ static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
 	prtmsg("Server sent malformed reply");
 	goto out;
       } 
-      if (!krb5_c_valid_enctype(et)) {
+      if (krb5_enctype_valid(ctx, et) != ENCTYPE_VALID) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
 	return 1;
       }

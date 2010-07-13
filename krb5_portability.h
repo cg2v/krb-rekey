@@ -38,3 +38,15 @@ static inline int krb5_free_keytab_entry_contents(krb5_context ctx,
 #if defined(HAVE_KRB5_C_MAKE_RANDOM_KEY) && !defined(HAVE_KRB5_GENERATE_RANDOM_KEYBLOCK)
 #define krb5_generate_random_keyblock krb5_c_make_random_key
 #endif
+#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
+#endif
+/* On old (pre-0.7) heimdal, krb5_enctype_valid returns a boolean,
+   like MIT's krb5_c_valid_enctype. 
+   From 0.7 through 1.2 (and maybe beyond), heimdal provides both functions 
+   and they return 0 or an error code */
+#ifdef ENCTYPE_VALID_RETURNS_BOOLEAN
+#define ENCTYPE_VALID 1
+#else
+#define ENCTYPE_VALID 0
+#endif

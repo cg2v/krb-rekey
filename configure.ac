@@ -150,8 +150,8 @@ AC_CHECK_TYPES([krb5_realm, krb5_kt_ops], , , [#ifdef HAVE_KRB5_H
 #else
 #include <krb5/krb5.h>
 #endif])
-AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree krb5_kt_register error_message krb5_c_valid_enctype])
-AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops, krb5_c_valid_enctype],[],[],[#ifdef HAVE_KRB5_H
+AC_CHECK_FUNCS([krb5_get_error_message krb5_free_error_message krb5_get_error_string krb5_free_error_string krb5_get_err_text krb5_generate_random_keyblock krb5_c_make_random_key krb5_principal_get_realm krb5_principal_get_comp_string krb5_free_unparsed_name krb5_free_keytab_entry_contents krb5_kt_free_entry krb5_xfree krb5_kt_register error_message krb5_enctype_valid krb5_c_valid_enctype])
+AC_CHECK_DECLS([krb5_get_error_message, krb5_free_error_message, krb5_get_error_string, krb5_free_error_string, krb5_get_err_text, krb5_generate_random_keyblock, krb5_c_make_random_key, krb5_principal_get_realm, krb5_principal_get_comp_string, krb5_princ_realm, krb5_princ_component, krb5_free_unparsed_name, krb5_free_keytab_entry_contents, krb5_kt_free_entry, krb5_xfree, krb5_kt_register, krb5_ktf_writable_ops, krb5_enctype_valid, krb5_c_valid_enctype],[],[],[#ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
 #include <krb5/krb5.h>
@@ -218,6 +218,68 @@ if test X$ktf_writable_ops = Xyes; then
 	AC_DEFINE([HAVE_KRB5_KTF_WRITABLE_OPS], [], 
 [Define if the krb5_ktf_writable_ops struct is available])
 fi
+AC_MSG_CHECKING([whether krb5_enctype_valid/krb5_c_valid_enctype works])
+dnl Make sure the function returns both positive and negative 
+dnl results for some value between 0 and 32
+dnl Make sure that only one of the mutually exclusive styles
+dnl (boolean vs error) is used.
+dnl The next test will determine which style we have.
+AC_RUN_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_KRB5_H
+#include <krb5.h>
+#else
+#include <krb5/krb5.h>
+#endif
+#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
+#endif]],[[krb5_context c; int i; int ret; 
+int got0=0; int got1=0; int gotother=0;
+if (krb5_init_context(&c)) return 1;
+for (i=0; i < 32; i++) {
+    ret=krb5_enctype_valid(c, i);
+    if (ret == 0)
+       got0=1;
+    if (ret == 1)
+       got1=1;
+    if (ret > 1)
+       gotother=1;
+}
+if (got0 == 0)
+  return 1;
+if ((got1 | gotother) == 0)
+  return 1;
+if (got1 == gotother)
+  return 1;
+return 0;]])], [ enctype_valid_works=yes ], [enctype_valid_works=no],
+[enctype_valid_works=cross-compiling-no])
+AC_MSG_RESULT([$enctype_valid_works])
+if test $enctype_valid_works = yes; then
+     AC_MSG_CHECKING([return style of krb5_enctype_valid/krb5_c_valid_enctype])
+     AC_RUN_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_KRB5_H
+#include <krb5.h>
+#else
+#include <krb5/krb5.h>
+#endif
+#if defined(HAVE_KRB5_C_VALID_ENCTYPE) && !defined(HAVE_KRB5_ENCTYPE_VALID)
+#define krb5_enctype_valid(ctx, et) krb5_c_valid_enctype((et))
+#endif]],[[krb5_context c; int i; 
+if (krb5_init_context(&c)) return 1;
+for (i=0; i < 32; i++) {
+    if (krb5_enctype_valid(c, i) > 1)
+	return 1;
+}
+return 0;]])], [ enctype_valid_type=boolean ], [enctype_valid_type=error_code],
+[enctype_valid_type=cross-compiling-unknown])
+     AC_MSG_RESULT([$enctype_valid_type])
+     if test $enctype_valid_type = boolean; then
+        AC_DEFINE([ENCTYPE_VALID_RETURNS_BOOLEAN], [], [Define if krb5_enctype_valid or krb5_c_valid_enctype returns a boolean value])
+     fi
+     if test $enctype_valid_type = error_code; then
+        AC_DEFINE([ENCTYPE_VALID_RETURNS_ERROR_CODE], [], [Define if krb5_enctype_valid or krb5_c_valid_enctype returns an error code])
+     fi
+else
+     AC_DEFINE([BROKEN_ENCTYPE_VALIDITY], [], [Define if the return semantics of krb5_enctype_valid or krb5_c_valid_enctype cannot be determined])
+fi
+    
 
 
 if test "$build_server" = "yes"; then
