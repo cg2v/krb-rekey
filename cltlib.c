@@ -734,7 +734,7 @@ static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
 	prtmsg("Server sent malformed reply");
 	goto out;
       } 
-      if (krb5_enctype_valid(ctx, et) != ENCTYPE_VALID) {
+      if (krb5_enctype_valid(ctx, et) != ENCTYPE_VALID && et != 2) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
 	return 1;
       }
@@ -794,6 +794,16 @@ static int process_keys(krb5_context ctx, krb5_keytab kt, mb_t buf,
 	prtmsg("Server sent malformed reply");
 	goto out;
       } 
+#if ( HAVE_DECL_KRB5_C_VALID_ENCTYPE || HAVE_DECL_KRB5_ENCTYPE_VALID) && \
+  !defined(BROKEN_ENCTYPE_VALIDITY)
+      /* skip des-cbc-md4 keys if they are not supported.
+	 other unsupported enctypes cause the entire operation to be
+	 aborted (ick) */
+      if (et == 2 && krb5_enctype_valid(ctx, et) != ENCTYPE_VALID) {
+	buf->cursor+=l;
+	continue;
+      }
+#endif
       if (skip) {
 	buf->cursor+=l;
 	continue;
