@@ -264,7 +264,7 @@ if test $enctype_valid_works = yes; then
 #endif]],[[krb5_context c; int i, ret; 
 if (krb5_init_context(&c)) return 1;
 for (i=0; i < 32; i++) {
-    ret=krb5_enctype_valid(c, i)
+    ret=krb5_enctype_valid(c, i);
     if (ret > 1 || ret < 0)
 	return 1;
 }
