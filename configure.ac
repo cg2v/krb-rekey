@@ -203,14 +203,14 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_KRB5_H
 krb5_error_code krb5_kt_register(krb5_context, krb5_kt_ops *);
 #endif
 #if !HAVE_DECL_KRB5_KTF_WRITABLE_OPS
-extern krb5_kt_ops *krb5_ktf_writable_ops;
+extern krb5_kt_ops krb5_ktf_writable_ops;
 #endif
 #endif
 ]], [[#if !defined(HAVE_KRB5_KT_OPS) || !HAVE_DECL_KRB5_KT_REGISTER
 #error Missing prerequisites for dynamic keytab backends - WRFILE must be built-in
 #else
 krb5_context c = 0;
-krb5_kt_register(c, krb5_ktf_writable_ops);
+krb5_kt_register(c, &krb5_ktf_writable_ops);
 #endif]])],
 [ktf_writable_ops="yes"],[ktf_writable_ops="no"])
 AC_MSG_RESULT([$ktf_writable_ops])
