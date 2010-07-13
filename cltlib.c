@@ -143,7 +143,7 @@ char *get_server(char *realm) {
 }
 
 #if defined(HAVE_KRB5_KTF_WRITABLE_OPS) && !HAVE_DECL_KRB5_KTF_WRITABLE_OPS
-extern krb5_kt_ops *krb5_ktf_writable_ops;
+extern krb5_kt_ops krb5_ktf_writable_ops;
 #endif
 
 krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
@@ -176,8 +176,8 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
     rc = krb5_kt_resolve(ctx, ktname, &kt);
     if (rc) {
 #ifdef HAVE_KRB5_KTF_WRITABLE_OPS
-      rc = krb5_kt_register(ctx, krb5_ktf_writable_ops);
-      if (rc != 0 || rc = krb5_kt_resolve(ctx, ktname, &kt)) {
+      rc = krb5_kt_register(ctx, &krb5_ktf_writable_ops);
+      if (rc != 0 || (rc = krb5_kt_resolve(ctx, ktname, &kt))) {
 #endif
 	sprintf(ktname, "FILE:%s", keytab);
 	rc = krb5_kt_resolve(ctx, ktname, &kt);
