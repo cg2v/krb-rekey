@@ -217,8 +217,12 @@ int get_correct_vno(krb5_context ctx, krb5_keytab kt,
 
 #ifdef HAVE_KRB5_TICKET_ENC_PART2
   princ_to_check->kdc_vno = ticket->enc_part.kvno;
-  princ_to_check->est_lifetime = ticket->enc_part2->times.endtime - 
-    ticket->enc_part2->times.authtime;
+  if (ticket->enc_part2->times.starttime) 
+    princ_to_check->est_lifetime = ticket->enc_part2->times.endtime - 
+      ticket->enc_part2->times.starttime;
+  else
+    princ_to_check->est_lifetime = ticket->enc_part2->times.endtime - 
+      ticket->enc_part2->times.authtime;
 #else
   {
       Ticket enc_tkt;
@@ -233,8 +237,12 @@ int get_correct_vno(krb5_context ctx, krb5_keytab kt,
          *enc_tkt.enc_part.kvno : 0;
    }
       
-  princ_to_check->est_lifetime = ticket->ticket.endtime - 
-    ticket->ticket.authtime;
+  if (ticket->ticket.starttime)
+    princ_to_check->est_lifetime = ticket->ticket.endtime - 
+      *ticket->ticket.starttime;
+  else
+    princ_to_check->est_lifetime = ticket->ticket.endtime - 
+      ticket->ticket.authtime;
 #endif
   /* minimum of 24 hours */
   if (princ_to_check->est_lifetime < 86400)
