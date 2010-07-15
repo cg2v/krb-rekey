@@ -269,6 +269,9 @@ void do_free_principals(krb5_context ctx, principal *princ_list) {
     free(princ_list);
   }
 }
+#if defined(HAVE_KRB5_KTF_WRITABLE_OPS) && !HAVE_DECL_KRB5_KTF_WRITABLE_OPS
+extern krb5_kt_ops krb5_ktf_writable_ops;
+#endif
 
 krb5_keytab get_keytab(krb5_context ctx, char *keytab) 
 {
@@ -301,12 +304,19 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
     sprintf(ktname, "WRFILE:%s", keytab);
     rc = krb5_kt_resolve(ctx, ktname, &kt);
     if (rc) {
-      sprintf(ktname, "FILE:%s", keytab);
-      rc = krb5_kt_resolve(ctx, ktname, &kt);
-      if (rc) {
-	print_krb5_error(ctx, stderr, "Cannot open default keytab", NULL, rc);
-	goto out;
+#ifdef HAVE_KRB5_KTF_WRITABLE_OPS
+      rc = krb5_kt_register(ctx, &krb5_ktf_writable_ops);
+      if (rc != 0 || (rc = krb5_kt_resolve(ctx, ktname, &kt))) {
+#endif
+	sprintf(ktname, "FILE:%s", keytab);
+	rc = krb5_kt_resolve(ctx, ktname, &kt);
+	if (rc) {
+	  print_krb5_error(ctx, stderr, "Cannot open default keytab", NULL, rc);
+	  goto out;
+	}
+#ifdef HAVE_KRB5_KTF_WRITABLE_OPS
       }
+#endif
     } 
   } else {
     rc = krb5_kt_resolve(ctx, keytab, &kt);
