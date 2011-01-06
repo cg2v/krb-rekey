@@ -314,7 +314,7 @@ badprinc:
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
-  if (!c2 && c1->length == strlen("afs") && strncmp(c1, "afs", c1->length))
+  if (!c2 && c1->length == strlen("afs") && strncmp(c1->data, "afs", c1->length))
     goto ok;
   if (!c2)
     goto badprinc;
@@ -434,7 +434,7 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
 	}
 	for (i=0; i< n_new_keys; i++)
 	  krb5_free_keyblock_contents(sess->kctx, &new_keys[i]);
-#ifdef HAVE_DECL_KRB5_XFREE
+#if HAVE_DECL_KRB5_XFREE
 	krb5_xfree(new_keys);
 #else
 	/* This is evil, but there's no other way to free this
@@ -1209,6 +1209,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   int rc;
   sqlite3_stmt *ins=NULL;
   int dbaction=0;
+  int no_send=0;
   sqlite_int64 princid;
   krb5_principal target=NULL;
   
@@ -1223,6 +1224,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (rc) {
     prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
     send_error(sess, ERR_BADREQ, "Bad principal name");
+    no_send = 1;
     goto freeall;
   }
 
@@ -1239,6 +1241,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
 #endif
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
+    no_send = 1;
     goto freeall;
   }
 #ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
@@ -1252,6 +1255,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (flag != 0 && flag != REQFLAG_DESONLY) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
     prtmsg("Invalid flag word %d in newreq", flag);
+    no_send = 1;
     goto freeall;
   }
   desonly=0;
@@ -1309,27 +1313,31 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   
   sess_send(sess, RESP_OK, NULL);
   dbaction=1;
+  no_send = 1;
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  no_send = 1;
   goto freeall;
  interr:
   send_error(sess, ERR_OTHER, "Server internal error");
+  no_send = 1;
   goto freeall;
  memerr:
   send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  no_send = 1;
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+  no_send = 1;
  freeall:
   if (ins)
     sqlite3_finalize(ins);
   if (dbaction > 0) {
     if (sql_commit_trans(sess)) {
       sql_rollback_trans(sess);
-      ret=1;
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
     }
@@ -1451,6 +1459,7 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
   unsigned int i, n;
   krb5_kvno kvno;
   int dbaction=0;
+  int no_send = 0;
     
   if (sess->is_host == 0) {
     send_error(sess, ERR_NOKEYS, "only hosts can fetch keys with this interface");
@@ -1564,12 +1573,14 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
     else
       send_error(sess, ERR_NOKEYS, "No keys available for this host");
     prtmsg("getnewkeys: No applicable keys available");
+    no_send=1;
   } else {
     set_cursor(buf, 0);
     if (buf_putint(buf, m))
       goto interr;
     sess_send(sess, RESP_KEYS, buf);
     dbaction=1;
+    no_send=1;
   }    
   
   goto freeall;
@@ -1577,14 +1588,19 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  no_send = 1;
   goto freeall;
  interr:
   send_error(sess, ERR_OTHER, "Server internal error");
+  no_send = 1;
   goto freeall;
  memerr:
   send_error(sess, ERR_OTHER, "Server internal error (out of memory)");
+  no_send = 1;
+  goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+  no_send = 1;
  freeall:
   if (st)
     sqlite3_finalize(st);
@@ -1595,7 +1611,6 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
   if (dbaction > 0) {
     if (sql_commit_trans(sess)) {
       sql_rollback_trans(sess);
-      ret=1;
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
     }
@@ -1656,7 +1671,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx, 
 			      sess->princ,
-			      principal)) {
+			      target)) {
     send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
     prtmsg("Not authorized to commitkey");
     return;
@@ -1768,9 +1783,15 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
  dberrnomsg:
   if (no_send == 0)
     send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  no_send = 1;
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  no_send = 1;
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+  no_send = 1;
  freeall:
   if (getprinc)
     sqlite3_finalize(getprinc);
@@ -1781,7 +1802,6 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
   if (dbaction > 0) {
     if (sql_commit_trans(sess)) {
       sql_rollback_trans(sess);
-      ret=1;
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
     }
@@ -1805,6 +1825,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   int rc;
   krb5_kvno kvno;
   int dbaction=0;
+  int no_send=0;
   sqlite_int64 princid;
   krb5_principal target=NULL;
 
@@ -1840,7 +1861,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx, 
 			      sess->princ,
-			      principal)) {
+			      target)) {
     send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
     prtmsg("Not authorized to simplekey");
     return;
@@ -1883,21 +1904,23 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     goto freeall;
   dbaction=1;
   sess_send(sess, RESP_KEYS, buf);
-  
+  no_send = 1;
   goto freeall;
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  no_send = 1;
   goto freeall;
  interr:
   send_error(sess, ERR_OTHER, "Server internal error");
+  no_send = 1;
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
+  no_send = 1;
  freeall:
   if (dbaction > 0) {
     if (sql_commit_trans(sess)) {
       sql_rollback_trans(sess);
-      ret=1;
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
     }
@@ -2026,6 +2049,9 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+  goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
   goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
