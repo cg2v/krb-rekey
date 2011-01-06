@@ -270,12 +270,11 @@ int kadm_init(struct rekey_session *sess)
   kadm_param.realm = sess->realm;
 
 #ifdef HAVE_KADM5_INIT_WITH_SKEY_CTX
-  rc = kadm5_init_with_skey_ctx(sess->kctx, 
-			    "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+  rc = kadm5_init_with_skey_ctx(sess->kctx, "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
 			    &kadm_param, KADM5_STRUCT_VERSION, 
 			    KADM5_API_VERSION_2, &kadm_handle);
 #else
-  rc = kadm5_init_with_skey("rekey/admin", NULL, KADM5_ADMIN_SERVICE,
+  rc = kadm5_init_with_skey(sess->kctx, "rekey/admin", NULL, KADM5_ADMIN_SERVICE,
 			    &kadm_param, KADM5_STRUCT_VERSION, 
 			    KADM5_API_VERSION_2, NULL, &kadm_handle);
 #endif
