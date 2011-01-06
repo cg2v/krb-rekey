@@ -71,29 +71,24 @@
 
 static SSL_CTX *sslctx;
 
-#include "dhp512.h"
-#include "dhp3072.h"
+#include "dhp7680.h"
 
 static DH *get_dh(SSL *ssl, int is_export, int keysize) {
   DH *ret;
-  if (is_export || keysize <= 512)
-    ret = get_dh512();
-  else if (keysize > 3072)
+  if (is_export || keysize < 512 || keysize > 7680)
     ret = NULL;
   else
-    ret = get_dh3072();
+    ret = get_dh7680();
   return ret;
 }
 
 #ifndef OPENSSL_NO_EC
 static EC_KEY *get_ecdh(SSL *ssl, int is_export, int keysize) {
   EC_KEY *ret;
-  if (is_export || keysize <= 512)
-    ret = EC_KEY_new_by_curve_name(NID_X9_62_c2pnb163v3);
-  else if (keysize > 7680)
+  if (is_export || keysize < 512 || keysize > 7680)
     ret = NULL;
   else
-    ret = EC_KEY_new_by_curve_name(NID_X9_62_c2tnb431r1);
+    ret = EC_KEY_new_by_curve_name(NID_secp384r1);
   return ret;
 }
 #endif
