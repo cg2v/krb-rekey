@@ -297,9 +297,10 @@ if test X$x_kadm5_init_with_skey_ctx = Xyes; then
   AC_DEFINE([HAVE_KADM5_INIT_WITH_SKEY_CTX], [], [Define if kadm5_init_with_skey_ctx function is available with heimdal-compatible signature])
 fi
 AC_MSG_CHECKING([for compatible kadm5_init_with_skey])
-AC_TRY_LINK([#include <kadm5/admin.h>], [kadm5_config_params *pa = 0;
+AC_TRY_LINK([#include <kadm5/admin.h>], [krb5_context kctx;
+kadm5_config_params *pa = 0;
 void *h; char *dbp[2] = { "", 0};
-(void)kadm5_init_with_skey("", "", KADM5_ADMIN_SERVICE, pa,
+(void)kadm5_init_with_skey(kctx, "", "", KADM5_ADMIN_SERVICE, pa,
    KADM5_STRUCT_VERSION, KADM5_API_VERSION_2, dbp, &h);],
  [ x_kadm5_init_with_skey=yes ], [ x_kadm5_init_with_skey=no ])
 AC_MSG_RESULT([$x_kadm5_init_with_skey])
