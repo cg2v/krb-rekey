@@ -16,7 +16,7 @@
 #include <krb5/krb5.h>
 #endif
 #include "krb5_portability.h"
-#if defined(HAVE_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
+#if defined(HAVE_DECL_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_DECL_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
 #elif defined (HAVE_KRB5_PRINC_REALM) && defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_MIT_STYLE 1
