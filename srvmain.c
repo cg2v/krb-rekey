@@ -94,6 +94,11 @@ void run_one(int s, struct sockaddr *sa) {
 
 
 int main(int argc, char **argv) {
+  if (argc > 1) {
+     const char *u="Usage: rekeysrv\n";
+     write(STDERR_FILENO, u, strlen(u));
+     exit(1);
+  }
   openlog("rekeysrv", LOG_PID, LOG_DAEMON);
   signal(SIGCHLD, SIG_IGN);
   ssl_startup();
