@@ -410,7 +410,7 @@ void c_auth(SSL *ssl, char *hostname) {
    maj = gss_init_sec_context(&min, GSS_C_NO_CREDENTIAL, &gctx,
                               n, &reqmech, 
                               GSS_C_MUTUAL_FLAG | GSS_C_INTEG_FLAG,
-                              0, GSS_C_NO_CHANNEL_BINDINGS,
+                              GSS_C_INDEFINITE, GSS_C_NO_CHANNEL_BINDINGS,
                               inp, &mech, &out, &rflag, NULL);
    if (inp) {
      free(inp->value);
