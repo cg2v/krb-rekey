@@ -13,12 +13,17 @@ gl_EARLY
 AX_CFLAGS_WARN_ALL
 gl_INIT
 AC_DEFINE([REPLACE_VASNPRINTF], [1], [rename vasnprintf to avoid cross-library api conflicts])
+# Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+AC_TYPE_PID_T
+AC_TYPE_SIZE_T
+
+# Checks for header files.
+AC_HEADER_STDC
+AC_CHECK_HEADERS([fcntl.h memory.h])
+AC_CHECK_FUNCS([daemon setsid setpgrp])
+AC_FUNC_SETPGRP
 # Checks for libraries.
-dnl AC_CHECK_LIB([gssapi], [gss_init_sec_context], [LIB_GSS=-lgssapi],[
-dnl AC_CHECK_LIB([gssapi_krb5], [gss_init_sec_context], [LIB_GSS=-lgssapi_krb5],[
-dnl AC_MSG_ERROR([No GSSAPI library found])])])
-dnl AC_CHECK_LIB([krb5], [krb5_init_context], [LIB_KRB5=-lkrb5],[
-dnl AC_MSG_ERROR([No krb5 library found])])
 AC_ARG_ENABLE(server, AS_HELP_STRING([--enable-server], [build server component (default is no)]),
 	[build_server=$enableval], [build_server=no])
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
@@ -61,9 +66,6 @@ AC_SUBST([LIB_KADMS])
 AC_SUBST([LIB_SQLITE3])
 AC_SUBST([LIB_GROUPS])
 
-# Checks for header files.
-AC_HEADER_STDC
-AC_CHECK_HEADERS([fcntl.h memory.h netdb.h])
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"
 AC_CHECK_HEADERS([gssapi/gssapi.h gssapi/gssapi_krb5.h], [], [AC_CHECK_HEADERS([gssapi.h],[AC_DEFINE([USE_GSSAPI_H],[],[Use heimdal-style <gssapi.h>, not <gssapi/gssapi_*.h>])],[AC_MSG_ERROR([No GSSAPI headers found])])])
@@ -74,11 +76,6 @@ AC_CHECK_HEADERS([kadm5/kadm5_err.h])
 fi
 CPPFLAGS="$save_CPPFLAGS"
 
-
-# Checks for typedefs, structures, and compiler characteristics.
-AC_C_CONST
-AC_TYPE_PID_T
-AC_TYPE_SIZE_T
 
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$CPPFLAGS $KRB_INC_FLAGS"

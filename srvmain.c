@@ -43,10 +43,12 @@
 #include "config.h"
 #endif
 #include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/syslog.h>
@@ -92,12 +94,74 @@ void run_one(int s, struct sockaddr *sa) {
   close(s);
 }
 
-
+static char *pidfile=NULL;
+static void sigdie(int sig) {
+  if (pidfile)
+    unlink(pidfile);
+  _exit(255);
+}
 int main(int argc, char **argv) {
-  if (argc > 1) {
-     const char *u="Usage: rekeysrv\n";
-     write(STDERR_FILENO, u, strlen(u));
-     exit(1);
+  int dofork=0;
+
+  int optch;
+  while ((optch=getopt(argc, argv, "dp:")) != -1) {
+    switch (optch) {
+    case 'd':
+      dofork=1;
+      break;
+    case 'p':
+      pidfile=optarg;
+      break;
+    case '?':
+      optind=0;
+      break;
+    }
+    if (optind == 0)
+      break; /* fall through to usage */
+  }
+  
+  if (argc > optind) {
+    fprintf(stderr, "Usage: rekeysrv [-d] [-p pidfile path]\n");
+    exit(1);
+  }
+  if (dofork) {
+#ifdef HAVE_DAEMON
+    if (daemon(0, 0)) {
+      perror("Cannot fork");
+      exit(1);
+    }
+#else
+    pid_t pid=fork();
+    if (pid > 0) _exit(0);
+    if (pid > 0) {
+      perror("Cannot fork");
+      exit(1);
+    }
+#ifdef HAVE_SETSID
+    setsid();
+#else
+#ifdef HAVE_SETPGRP
+#ifdef SETPGRP_VOID
+    setpgrp();
+#else
+    setpgrp(0,0);
+#endif
+#endif
+#endif
+#endif
+  }
+  if (pidfile) {
+    FILE *pf;
+    pf=fopen(pidfile, "w+");
+    if (pf) {
+      fprintf(pf, "%ld", (long)getpid());
+      fclose(pf);
+    } else {
+      pidfile=NULL;
+    }
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGINT, sigdie);
+    signal(SIGTERM, sigdie);
   }
   openlog("rekeysrv", LOG_PID, LOG_DAEMON);
   signal(SIGCHLD, SIG_IGN);
