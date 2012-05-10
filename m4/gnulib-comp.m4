@@ -25,8 +25,73 @@ AC_DEFUN([gl_EARLY],
   m4_pattern_allow([^gl_LIBOBJS$])dnl a variable
   m4_pattern_allow([^gl_LTLIBOBJS$])dnl a variable
   AC_REQUIRE([AC_PROG_RANLIB])
+  # Code from module alignof:
+  # Code from module alloca:
+  # Code from module alloca-opt:
+  # Code from module arg-nonnull:
+  # Code from module arpa_inet:
+  # Code from module c++defs:
+  # Code from module close-hook:
+  # Code from module environ:
+  # Code from module errno:
+  # Code from module extensions:
   AC_REQUIRE([gl_USE_SYSTEM_EXTENSIONS])
+  # Code from module float:
+  # Code from module fpieee:
   AC_REQUIRE([gl_FP_IEEE])
+  # Code from module fpucw:
+  # Code from module frexp-nolibm:
+  # Code from module frexpl-nolibm:
+  # Code from module getaddrinfo:
+  # Code from module getopt-posix:
+  # Code from module gettext-h:
+  # Code from module hostent:
+  # Code from module include_next:
+  # Code from module inet_ntop:
+  # Code from module intprops:
+  # Code from module isnand-nolibm:
+  # Code from module isnanf-nolibm:
+  # Code from module isnanl-nolibm:
+  # Code from module malloc-posix:
+  # Code from module malloca:
+  # Code from module math:
+  # Code from module memchr:
+  # Code from module multiarch:
+  # Code from module netdb:
+  # Code from module netinet_in:
+  # Code from module nocrash:
+  # Code from module poll:
+  # Code from module printf-frexp:
+  # Code from module printf-frexpl:
+  # Code from module printf-safe:
+  # Code from module realloc-posix:
+  # Code from module select:
+  # Code from module servent:
+  # Code from module setenv:
+  # Code from module signbit:
+  # Code from module size_max:
+  # Code from module snprintf:
+  # Code from module snprintf-posix:
+  # Code from module sockets:
+  # Code from module socklen:
+  # Code from module sprintf-posix:
+  # Code from module stdbool:
+  # Code from module stddef:
+  # Code from module stdint:
+  # Code from module stdio:
+  # Code from module stdlib:
+  # Code from module strerror:
+  # Code from module string:
+  # Code from module sys_select:
+  # Code from module sys_socket:
+  # Code from module sys_time:
+  # Code from module unistd:
+  # Code from module vasnprintf:
+  # Code from module vasprintf:
+  # Code from module vasprintf-posix:
+  # Code from module warn-on-use:
+  # Code from module wchar:
+  # Code from module xsize:
 ])
 
 # This macro should be invoked from ./configure.ac, in the section
@@ -37,6 +102,7 @@ AC_DEFUN([gl_INIT],
   gl_cond_libtool=false
   gl_libdeps=
   gl_ltlibdeps=
+  gl_m4_base='m4'
   m4_pushdef([AC_LIBOBJ], m4_defn([gl_LIBOBJ]))
   m4_pushdef([AC_REPLACE_FUNCS], m4_defn([gl_REPLACE_FUNCS]))
   m4_pushdef([AC_LIBSOURCES], m4_defn([gl_LIBSOURCES]))
@@ -44,87 +110,149 @@ AC_DEFUN([gl_INIT],
   m4_pushdef([gl_LIBSOURCES_DIR], [])
   gl_COMMON
   gl_source_base='lib'
+  # Code from module alignof:
+  # Code from module alloca:
+  # Code from module alloca-opt:
   gl_FUNC_ALLOCA
+  # Code from module arg-nonnull:
+  # Code from module arpa_inet:
   gl_HEADER_ARPA_INET
   AC_PROG_MKDIR_P
+  # Code from module c++defs:
+  # Code from module close-hook:
+  # Code from module environ:
   gl_ENVIRON
   gl_UNISTD_MODULE_INDICATOR([environ])
+  # Code from module errno:
   gl_HEADER_ERRNO_H
+  # Code from module extensions:
+  # Code from module float:
   gl_FLOAT_H
+  # Code from module fpieee:
+  # Code from module fpucw:
+  # Code from module frexp-nolibm:
   gl_FUNC_FREXP_NO_LIBM
   gl_MATH_MODULE_INDICATOR([frexp])
+  # Code from module frexpl-nolibm:
   gl_FUNC_FREXPL_NO_LIBM
   gl_MATH_MODULE_INDICATOR([frexpl])
+  # Code from module getaddrinfo:
   gl_GETADDRINFO
   gl_NETDB_MODULE_INDICATOR([getaddrinfo])
-  gl_FUNC_GETOPT_GNU
-  gl_MODULE_INDICATOR([getopt-gnu])
+  # Code from module getopt-posix:
   gl_FUNC_GETOPT_POSIX
+  # Code from module gettext-h:
   AC_SUBST([LIBINTL])
   AC_SUBST([LTLIBINTL])
+  # Code from module hostent:
   gl_HOSTENT
-  gl_INET_NTOP
+  # Code from module include_next:
+  # Code from module inet_ntop:
+  gl_FUNC_INET_NTOP
   gl_ARPA_INET_MODULE_INDICATOR([inet_ntop])
+  # Code from module intprops:
+  # Code from module isnand-nolibm:
   gl_FUNC_ISNAND_NO_LIBM
+  # Code from module isnanf-nolibm:
   gl_FUNC_ISNANF_NO_LIBM
+  # Code from module isnanl-nolibm:
   gl_FUNC_ISNANL_NO_LIBM
+  # Code from module malloc-posix:
   gl_FUNC_MALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([malloc-posix])
+  # Code from module malloca:
   gl_MALLOCA
+  # Code from module math:
   gl_MATH_H
+  # Code from module memchr:
   gl_FUNC_MEMCHR
   gl_STRING_MODULE_INDICATOR([memchr])
-  gl_FUNC_MEMCMP
-  gl_FUNC_MEMSET
+  # Code from module multiarch:
   gl_MULTIARCH
+  # Code from module netdb:
   gl_HEADER_NETDB
+  # Code from module netinet_in:
   gl_HEADER_NETINET_IN
   AC_PROG_MKDIR_P
+  # Code from module nocrash:
+  # Code from module poll:
   gl_FUNC_POLL
+  # Code from module printf-frexp:
   gl_FUNC_PRINTF_FREXP
+  # Code from module printf-frexpl:
   gl_FUNC_PRINTF_FREXPL
+  # Code from module printf-safe:
   m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
+  # Code from module realloc-posix:
   gl_FUNC_REALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([realloc-posix])
+  # Code from module select:
   gl_FUNC_SELECT
   gl_SYS_SELECT_MODULE_INDICATOR([select])
+  # Code from module servent:
   gl_SERVENT
+  # Code from module setenv:
   gl_FUNC_SETENV
   gl_STDLIB_MODULE_INDICATOR([setenv])
+  # Code from module signbit:
   gl_SIGNBIT
   gl_MATH_MODULE_INDICATOR([signbit])
+  # Code from module size_max:
   gl_SIZE_MAX
+  # Code from module snprintf:
   gl_FUNC_SNPRINTF
   gl_STDIO_MODULE_INDICATOR([snprintf])
+  # Code from module snprintf-posix:
   gl_FUNC_SNPRINTF_POSIX
+  # Code from module sockets:
   gl_SOCKETS
+  # Code from module socklen:
   gl_TYPE_SOCKLEN_T
+  # Code from module sprintf-posix:
   gl_FUNC_SPRINTF_POSIX
   gl_STDIO_MODULE_INDICATOR([sprintf-posix])
+  # Code from module stdbool:
   AM_STDBOOL_H
+  # Code from module stddef:
   gl_STDDEF_H
+  # Code from module stdint:
   gl_STDINT_H
+  # Code from module stdio:
   gl_STDIO_H
+  # Code from module stdlib:
   gl_STDLIB_H
+  # Code from module strerror:
   gl_FUNC_STRERROR
   gl_STRING_MODULE_INDICATOR([strerror])
+  # Code from module string:
   gl_HEADER_STRING_H
+  # Code from module sys_select:
   gl_HEADER_SYS_SELECT
   AC_PROG_MKDIR_P
+  # Code from module sys_socket:
   gl_HEADER_SYS_SOCKET
   AC_PROG_MKDIR_P
+  # Code from module sys_time:
   gl_HEADER_SYS_TIME_H
   AC_PROG_MKDIR_P
+  # Code from module unistd:
   gl_UNISTD_H
+  # Code from module vasnprintf:
   gl_FUNC_VASNPRINTF
+  # Code from module vasprintf:
   gl_FUNC_VASPRINTF
   gl_STDIO_MODULE_INDICATOR([vasprintf])
   m4_ifdef([AM_XGETTEXT_OPTION],
     [AM_][XGETTEXT_OPTION([--flag=asprintf:2:c-format])
      AM_][XGETTEXT_OPTION([--flag=vasprintf:2:c-format])])
+  # Code from module vasprintf-posix:
   gl_FUNC_VASPRINTF_POSIX
+  # Code from module warn-on-use:
+  # Code from module wchar:
   gl_WCHAR_H
+  # Code from module xsize:
   gl_XSIZE
+  # End of code from modules
   m4_ifval(gl_LIBSOURCES_LIST, [
     m4_syscmd([test ! -d ]m4_defn([gl_LIBSOURCES_DIR])[ ||
       for gl_file in ]gl_LIBSOURCES_LIST[ ; do
@@ -164,6 +292,13 @@ AC_DEFUN([gl_INIT],
   m4_pushdef([gltests_LIBSOURCES_DIR], [])
   gl_COMMON
   gl_source_base='tests'
+changequote(,)dnl
+  gltests_WITNESS=IN_`echo "${PACKAGE-$PACKAGE_TARNAME}" | LC_ALL=C tr abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ | LC_ALL=C sed -e 's/[^A-Z0-9_]/_/g'`_GNULIB_TESTS
+changequote([, ])dnl
+  AC_SUBST([gltests_WITNESS])
+  gl_module_indicator_condition=$gltests_WITNESS
+  m4_pushdef([gl_MODULE_INDICATOR_CONDITION], [$gl_module_indicator_condition])
+  m4_popdef([gl_MODULE_INDICATOR_CONDITION])
   m4_ifval(gltests_LIBSOURCES_LIST, [
     m4_syscmd([test ! -d ]m4_defn([gltests_LIBSOURCES_DIR])[ ||
       for gl_file in ]gltests_LIBSOURCES_LIST[ ; do
@@ -258,7 +393,8 @@ AC_DEFUN([gltests_LIBSOURCES], [
 # gnulib-tool and may be removed by future gnulib-tool invocations.
 AC_DEFUN([gl_FILE_LIST], [
   build-aux/arg-nonnull.h
-  build-aux/link-warning.h
+  build-aux/c++defs.h
+  build-aux/warn-on-use.h
   lib/alignof.h
   lib/alloca.c
   lib/alloca.in.h
@@ -296,8 +432,6 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/math.in.h
   lib/memchr.c
   lib/memchr.valgrind
-  lib/memcmp.c
-  lib/memset.c
   lib/netdb.in.h
   lib/netinet_in.in.h
   lib/poll.c
@@ -342,6 +476,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/00gnulib.m4
   m4/alloca.m4
   m4/arpa_inet_h.m4
+  m4/asm-underscore.m4
   m4/eealloc.m4
   m4/environ.m4
   m4/errno_h.m4
@@ -370,8 +505,6 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/malloca.m4
   m4/math_h.m4
   m4/memchr.m4
-  m4/memcmp.m4
-  m4/memset.m4
   m4/mmap-anon.m4
   m4/multiarch.m4
   m4/netdb_h.m4
@@ -408,7 +541,8 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/vasnprintf.m4
   m4/vasprintf-posix.m4
   m4/vasprintf.m4
-  m4/wchar.m4
+  m4/warn-on-use.m4
+  m4/wchar_h.m4
   m4/wchar_t.m4
   m4/wint_t.m4
   m4/xsize.m4
