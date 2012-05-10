@@ -46,6 +46,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <getopt.h>
 #include <openssl/ssl.h>
 #ifdef USE_GSSAPI_H
 #include <gssapi.h>
@@ -54,24 +55,46 @@
 #endif
 
 #include "memmgt.h"
+#include "protocol.h"
 #include "rekey-locl.h"
 #include "rekeyclt-locl.h"
 
 int main(int argc, char **argv) {
   SSL *conn;
+  char *keytab = "tmp.keytab";
+  char *servername = "rekey.andrew.cmu.edu";
+  int optch;
+  int flag=0;
+
+  while ((optch = getopt(argc, argv, "k:s:d")) != -1) {
+    switch (optch) {
+    case 'k':
+      keytab = optarg;
+      break;
+    case 's':
+      servername = optarg;
+      break;
+    case 'd':
+      flag|=REQFLAG_DESONLY;
+      break;
+    case '?':
+      fprintf(stderr, "Usage: rekeytest [-k keytab] [-r realm] [-s servername] [-d] [princ [hostname...] \n");
+      exit(1);
+    }
+  }
 
   ssl_startup();
 
-  conn=c_connect("rekey.andrew.cmu.edu");
+  conn=c_connect(servername);
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
-  c_auth(conn, "rekey.andrew.cmu.edu");
+  c_auth(conn, servername);
   if (argc > 2)
-    c_newreq(conn, argv[1], 0, argc - 2, argv + 2);
+    c_newreq(conn, argv[1], flag, argc - 2, argv + 2);
   else if (argc == 2)
     c_status(conn, argv[1]);
   else 
-    c_getkeys(conn, "tmp.keytab", 0, NULL);
+    c_getkeys(conn, keytab, 0, NULL);
     
   SSL_shutdown(conn);
   SSL_free(conn);
