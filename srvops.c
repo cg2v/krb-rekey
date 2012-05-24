@@ -1252,6 +1252,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
 
   if (buf_getint(buf, &flags))
     goto badpkt;
+  flags |= REQFLAG_COMPAT_ENCTYPE;
   if (check_flags(flags)) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
     no_send = 1;
