@@ -64,6 +64,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module printf-frexp:
   # Code from module printf-frexpl:
   # Code from module printf-safe:
+  # Code from module pthread:
   # Code from module realloc-posix:
   # Code from module select:
   # Code from module servent:
@@ -183,6 +184,8 @@ AC_DEFUN([gl_INIT],
   gl_FUNC_PRINTF_FREXPL
   # Code from module printf-safe:
   m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
+  # Code from module pthread:
+  gl_PTHREAD_CHECK
   # Code from module realloc-posix:
   gl_FUNC_REALLOC_POSIX
   gl_STDLIB_MODULE_INDICATOR([realloc-posix])
@@ -444,6 +447,7 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/printf-frexpl.h
   lib/printf-parse.c
   lib/printf-parse.h
+  lib/pthread.in.h
   lib/realloc.c
   lib/select.c
   lib/setenv.c
@@ -514,6 +518,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/printf-frexp.m4
   m4/printf-frexpl.m4
   m4/printf.m4
+  m4/pthread.m4
   m4/realloc.m4
   m4/select.m4
   m4/servent.m4

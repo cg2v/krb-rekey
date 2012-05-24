@@ -15,7 +15,7 @@
 
 
 # Specification in the form of a command-line invocation:
-#   gnulib-tool --import --dir=. --lib=libgnu --source-base=lib --m4-base=m4 --doc-base=doc --tests-base=tests --aux-dir=. --lgpl --no-libtool --macro-prefix=gl getaddrinfo getopt-posix inet_ntop malloc-posix netinet_in poll realloc-posix setenv snprintf-posix sprintf-posix strerror sys_socket unistd vasprintf-posix
+#   gnulib-tool --import --dir=. --lib=libgnu --source-base=lib --m4-base=m4 --doc-base=doc --tests-base=tests --aux-dir=. --lgpl --no-libtool --macro-prefix=gl getaddrinfo getopt-posix inet_ntop malloc-posix netinet_in poll pthread realloc-posix setenv snprintf-posix sprintf-posix strerror sys_socket unistd vasprintf-posix
 
 # Specification in the form of a few gnulib-tool.m4 macro invocations:
 gl_LOCAL_DIR([])
@@ -26,6 +26,7 @@ gl_MODULES([
   malloc-posix
   netinet_in
   poll
+  pthread
   realloc-posix
   setenv
   snprintf-posix
