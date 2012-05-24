@@ -57,6 +57,30 @@
 
 #include "rekeysrv-locl.h"
 
+void run_fg(int s, struct sockaddr *sa) {
+  char addrstr[INET6_ADDRSTRLEN];
+  if (sa->sa_family == AF_INET) {
+    struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+    if (!inet_ntop(sin->sin_family, &sin->sin_addr, addrstr,
+		   INET6_ADDRSTRLEN)) {
+      syslog(LOG_ERR, "Cannot determine connection address: %m");
+    } else {
+      syslog(LOG_INFO, "Connection from %s", addrstr);
+    }
+  } else if (sa->sa_family == AF_INET6) {
+    struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sa;
+    if (!inet_ntop(sin6->sin6_family, &sin6->sin6_addr, addrstr,
+		   INET6_ADDRSTRLEN)) {
+      syslog(LOG_ERR, "Cannot determine connection address: %m");
+    } else {
+      syslog(LOG_INFO, "Connection from %s", addrstr);
+    }
+  } else {
+    syslog(LOG_INFO, "Connection from unknown address type %d", sa->sa_family);
+  }
+  run_session(s);
+  exit(0);
+}
 void run_one(int s, struct sockaddr *sa) {
   pid_t p;
 
@@ -67,30 +91,8 @@ void run_one(int s, struct sockaddr *sa) {
   if (p < 0) 
     syslog(LOG_ERR, "Cannot fork: %m");
 #endif
-  if (p == 0) {
-    char addrstr[INET6_ADDRSTRLEN];
-    if (sa->sa_family == AF_INET) {
-      struct sockaddr_in *sin = (struct sockaddr_in *)sa;
-      if (!inet_ntop(sin->sin_family, &sin->sin_addr, addrstr,
-		     INET6_ADDRSTRLEN)) {
-	syslog(LOG_ERR, "Cannot determine connection address: %m");
-      } else {
-	syslog(LOG_INFO, "Connection from %s", addrstr);
-      }
-    } else if (sa->sa_family == AF_INET6) {
-      struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sa;
-      if (!inet_ntop(sin6->sin6_family, &sin6->sin6_addr, addrstr,
-		     INET6_ADDRSTRLEN)) {
-	syslog(LOG_ERR, "Cannot determine connection address: %m");
-      } else {
-	syslog(LOG_INFO, "Connection from %s", addrstr);
-      }
-    } else {
-      syslog(LOG_INFO, "Connection from unknown address type %d", sa->sa_family);
-    }
-    run_session(s);
-    exit(0);
-  }
+  if (p == 0)
+    run_fg(s, sa);
   close(s);
 }
 
@@ -102,12 +104,15 @@ static void sigdie(int sig) {
 }
 int main(int argc, char **argv) {
   int dofork=0;
-
+  int inetd=0;
   int optch;
-  while ((optch=getopt(argc, argv, "dp:")) != -1) {
+  while ((optch=getopt(argc, argv, "idp:")) != -1) {
     switch (optch) {
     case 'd':
       dofork=1;
+      break;
+    case 'i':
+      inetd=1;
       break;
     case 'p':
       pidfile=optarg;
@@ -121,7 +126,11 @@ int main(int argc, char **argv) {
   }
   
   if (argc > optind) {
-    fprintf(stderr, "Usage: rekeysrv [-d] [-p pidfile path]\n");
+    fprintf(stderr, "Usage: rekeysrv [-i] | [[-d] [-p pidfile path]]\n");
+    exit(1);
+  }
+  if (inetd && (dofork || pidfile)) {
+    fprintf(stderr, "Can't fork or use pidfile when running under inetd\n");
     exit(1);
   }
   if (dofork) {
@@ -164,9 +173,23 @@ int main(int argc, char **argv) {
     signal(SIGTERM, sigdie);
   }
   openlog("rekeysrv", LOG_PID, LOG_DAEMON);
-  signal(SIGCHLD, SIG_IGN);
+
   ssl_startup();
-  net_startup();
-  run_accept_loop(run_one);
+  if (inetd) {
+    struct sockaddr_storage ss;
+    struct sockaddr *sa = (struct sockaddr *)&ss;
+    int r;
+    socklen_t sl=sizeof(struct sockaddr_storage);
+    r=getpeername(0, sa, &sl);
+    if (r<0) {
+      syslog(LOG_ERR, "Cannot getpeername: %m");
+      exit (1);
+    }
+    run_fg(0, sa);
+  } else {
+    signal(SIGCHLD, SIG_IGN);
+    net_startup();
+    run_accept_loop(run_one);
+  }
   exit(0);
 }
