@@ -131,16 +131,43 @@ static int in_admin_group(const char *username)
   groups_destroy(g);
   return ret;
 }
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
+static int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val) {
+  const char *s;
+  if (val <=0)
+    return 0;
+  if (!(s=krb5_principal_get_comp_string(context, princ, val-1)) ||
+      (strlen(s) == 0))
+    return 0;
+  if ((s=krb5_principal_get_comp_string(context, princ, val)) &&
+      (strlen(s) > 0))
+    return 0;
+  return 1;
+}
+#define compare_princ_comp(obj, ts) (strlen(obj) == strlen(ts) && !strcmp(obj, ts))
+#define get_comp_string(obj) strdup(obj)
+#define free_comp_string(str) str=NULL;
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
+#define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
+#define compare_princ_comp(obj, ts) (obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length))
+static char *get_comp_string(krb5_data *obj) {
+  char *ret;
+  ret=malloc(obj->length+1);
+  memcpy(ret, obj->data, obj->length);
+  ret[obj->length]=0;
+  return ret;
+}
+#endif    
 
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {
   size_t rl;
+  char *username;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm, *c1, *c2, *c3;
+  const char  *princ_realm, *c1, *c2;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   krb5_data *princ_realm, *c1, *c2;
-  char *username;
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
@@ -155,25 +182,9 @@ static void check_authz(struct rekey_session *sess)
     return;
   c1 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 0);
   c2 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 1);
-  c3 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 2);
-
-  if (c1 && c2 && !c3 && !memcmp(c1, "host", 5)) {
-    sess->is_host = 1;
-    sess->hostname=malloc(strlen(c2)+1);
-    if (sess->hostname)
-      strcpy(sess->hostname, c2);
-    else /* mark not a valid host, since we don't have its identification */
-      sess->is_host = 0;
-    return;
-  }
-  
-  if (c1 && c2 && !c3 && !memcmp(c2, "admin", 5) &&
-      in_admin_group(c1)) {
-    sess->is_admin = 1;
-  }
 
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-
+  
   princ_realm = krb5_princ_realm(sess->kctx, sess->princ); 
   if (!princ_realm || rl != princ_realm->length ||
       strncmp(princ_realm->data , sess->realm, rl))
@@ -182,30 +193,24 @@ static void check_authz(struct rekey_session *sess)
     return;
   c1 = krb5_princ_component(sess->kctx, sess->princ, 0);
   c2 = krb5_princ_component(sess->kctx, sess->princ, 1);
-
-  if (c1->length == 4 && 
-      !strncmp(c1->data, "host", 4)) {
+#endif
+  
+  if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
+      compare_princ_comp(c1, "host")) {
     sess->is_host = 1;
-    sess->hostname=malloc(c2->length+1);
-    if (sess->hostname) {
-      strncpy(sess->hostname, c2->data, c2->length);
-      sess->hostname[c2->length]=0;
-    } else /* mark not a valid host, since we don't have its identification */
+    sess->hostname=get_comp_string(c2);
+    if (!sess->hostname) /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
     return;
   }
   
-  if (c2->length == 5 && !strncmp(c2->data, "admin", 5)) {
-    username=malloc(c1->length + 1);
-    if (!username)
-      return;
-    memcpy(username, c1->data, c1->length);
-    username[c1->length]=0;
+  if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
+      compare_princ_comp(c2, "admin")) {
+    username=get_comp_string(c1);
     if (in_admin_group(username))
       sess->is_admin = 1;
     free(username);
   }
-#endif
 }
 
 
@@ -239,38 +244,6 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
   }
   c1 = krb5_principal_get_comp_string(sess->kctx, target, 0);
   c2 = krb5_principal_get_comp_string(sess->kctx, target, 1);
-#ifdef LIMIT_TARGET
-  if (!c1 || strlen(c1) != strlen(LIMIT_TARGET) || strcmp(c1, LIMIT_TARGET)) {
-    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
-  }
-#else
-  /* default principal exclusions: kadmin, local tgt, master key verifier, 
-     single component that isn't afs@ (i.e. users). */
-  if (!c1) {
-badprinc:
-    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
-  }
-  if ((!c2 || strlen(c2) == 0) && strlen(c1) == strlen("afs") &&
-      !strcmp(c1, "afs"))
-    goto ok;
-  if ((!c2 || strlen(c2) == 0))
-    goto badprinc;
-
-  if (strlen(c1) == strlen("kadmin") && !strcmp(c1, "kadmin"))
-     goto badprinc;
-  if (strlen(c1) == strlen("krbtgt") && !strcmp(c1, "krbtgt") &&
-      strlen(c2) == strlen(princ_realm) && !strcmp(c2, princ_realm))
-    goto badprinc;
-  if (strlen(c1) == 1 && strlen(c2) == 1  && !strcmp(c1, "K") &&
-      !strcmp(c2, "M"))
-    goto badprinc;
- ok:
-#endif
-  ret=0;
-  
- out:
 #elif defined(KRB5_PRINCIPAL_MIT_STYLE)
 
   princ_realm = krb5_princ_realm(sess->kctx, target); 
@@ -286,39 +259,70 @@ badprinc:
     c2 = krb5_princ_component(sess->kctx, target, 1);
   else
     c2 = NULL;
+#endif
 #ifdef LIMIT_TARGET
-  if (!c1 || 
-      c1->length != strlen(LIMIT_TARGET) || 
-      strncmp(c1->data, LIMIT_TARGET, c1->length)) {
+  if (!compare_princ_comp(c1, LIMIT_TARGET)) {
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
 #else
-  if (!c1) { 
-badprinc:
+  /* default principal exclusions: kadmin, local tgt, master key verifier, 
+     single component that isn't afs@ (i.e. users). */
+  if (!c1) {
+  badprinc:
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
     goto out;
   }
-  if (!c2 && c1->length == strlen("afs") && strncmp(c1->data, "afs", c1->length))
-    goto ok;
-  if (!c2)
+  if (princ_ncomp_eq(sess->kctx, target, 1)  && !compare_princ_comp(c1, "afs"))
     goto badprinc;
-  if (c1->length == strlen("kadmin") &&
-      !strncmp(c1->data, "kadmin", c1->length))
+
+  if (compare_princ_comp(c1, "kadmin"))
+     goto badprinc;
+  {
+    char *rs=get_comp_string(princ_realm);
+    if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
+      goto badprinc;
+    free(rs);
+  }
+  if (compare_princ_comp(c1, "K") && compare_princ_comp(c2, "M"))
     goto badprinc;
-  if (c1->length == strlen("krbtgt") &&
-      !strncmp(c1->data, "krbtgt", c1->length) &&
-      c2->length == princ_realm->length &&
-      !strncmp(c2->data, princ_realm->data, c2->length))
-    goto badprinc;
-  if (c1->length == 1 && c1->data[0] == 'K' &&
-      c2->length == 1 && c2->data[0] == 'M')
-    goto badprinc;
- ok:
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "root"))
+     goto badprinc;
+  /* idm/admin is a password. adm/admin will have to be done manually */
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "admin"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "gatekeeper"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "ldap"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "admin-afs"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "cyradm"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "daemon"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "ftp"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "mail"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "misc"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "remote"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "z"))
+     goto badprinc;
+  if (princ_ncomp_eq(sess->kctx, target, 2) && 
+      compare_princ_comp(c2, "jabber"))
+     goto badprinc;
+  /* user/zephyr bad, zephyr/zephyr ok */
+  if (princ_ncomp_eq(sess->kctx, target, 2) && 
+      !compare_princ_comp(c1, "zephyr") && 
+      compare_princ_comp(c2, "zephyr"))
+     goto badprinc;
 #endif
   ret=0;
+  
  out:
-#endif
   return ret;
 }
 
