@@ -71,18 +71,7 @@
 #include <gssapi/gssapi_krb5.h>
 #endif
 
-static krb5_enctype des_enctypes[] = {
-  ENCTYPE_DES_CBC_CRC,
-  ENCTYPE_NULL
-};
-
-static krb5_enctype cur_enctypes[] = {
-  ENCTYPE_DES_CBC_CRC,
-  ENCTYPE_DES3_CBC_SHA1,
-  ENCTYPE_NULL
-};
-
-static krb5_enctype future_enctypes[] = {
+static krb5_enctype enctypes[] = {
   ENCTYPE_DES_CBC_CRC,
   ENCTYPE_DES3_CBC_SHA1,
 #if HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96
@@ -96,10 +85,6 @@ static krb5_enctype future_enctypes[] = {
 #endif
   ENCTYPE_NULL
 };
-
-#ifdef THE_FUTURE_IS_NOW
-#define cur_enctypes future_enctypes
-#endif
 
 static int in_admin_group(const char *username) 
 {
@@ -515,23 +500,39 @@ static sqlite_int64 setup_principal(struct rekey_session *sess, char *principal,
   return princid;
 }
 
+static int check_flags(int flags) {
+  if (flags & (~REQFLAG_MASK)) {
+    prtmsg("Invalid flags word %d in newreq", flags);
+    return 1;
+  }
+
+  if ((flags & (REQFLAG_DESONLY|REQFLAG_NODES)) 
+      == (REQFLAG_DESONLY|REQFLAG_NODES)) {
+    prtmsg("Flags requested both des only and no des");
+    return 1;
+  }
+  return 0;
+}
+
 /* generates a keyset and places it in the local database */
-static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int desonly) 
+static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int reqflags) 
 {
   krb5_enctype *pEtype;
   krb5_keyblock keyblock;
   krb5_error_code kc;
   sqlite3_stmt *ins=NULL;
   int rc;
-
-  if (desonly)
-    pEtype=des_enctypes;
-  else
-    pEtype=cur_enctypes;
+  pEtype=enctypes;
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
 			  -1, &ins, NULL);
   for (;*pEtype != ENCTYPE_NULL; pEtype++) {
+    if (reqflags & REQFLAG_DESONLY && *pEtype > ENCTYPE_DES_CBC_CRC)
+      continue;
+    if (reqflags & REQFLAG_NODES && *pEtype == ENCTYPE_DES_CBC_CRC)
+      continue;
+    if (reqflags & REQFLAG_COMPAT_ENCTYPE && *pEtype > ENCTYPE_DES3_CBC_SHA1)
+      continue;
     kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
     if (kc) {
       prtmsg("Cannot generate key for enctype %d (kerberos error %s)", 
@@ -1204,8 +1205,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
 {
   char *principal=NULL, *unp;
   char **hostnames=NULL;
-  int desonly;
-  unsigned int i, n, flag;
+  unsigned int i, n, flags;
   int rc;
   sqlite3_stmt *ins=NULL;
   int dbaction=0;
@@ -1250,17 +1250,13 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   krb5_free_unparsed_name(sess->kctx, unp);
 #endif
 
-  if (buf_getint(buf, &flag))
+  if (buf_getint(buf, &flags))
     goto badpkt;
-  if (flag != 0 && flag != REQFLAG_DESONLY) {
+  if (check_flags(flags)) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
-    prtmsg("Invalid flag word %d in newreq", flag);
     no_send = 1;
     goto freeall;
   }
-  desonly=0;
-  if (flag == REQFLAG_DESONLY)
-    desonly=1;
   if (buf_getint(buf, &n))
     goto badpkt;
   hostnames=calloc(n, sizeof(char *));
@@ -1308,7 +1304,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (rc != SQLITE_OK)
     goto dberr;
 
-  if (generate_keys(sess, princid, desonly))
+  if (generate_keys(sess, princid, flags))
     goto freeall;
   
   sess_send(sess, RESP_OK, NULL);
@@ -1820,8 +1816,7 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 static void s_simplekey(struct rekey_session *sess, mb_t buf)
 {
   char *principal=NULL, *unp;
-  int desonly;
-  unsigned int flag;
+  unsigned int flags;
   int rc;
   krb5_kvno kvno;
   int dbaction=0;
@@ -1867,16 +1862,13 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     return;
   }
 
-  if (buf_getint(buf, &flag))
+  if (buf_getint(buf, &flags))
     goto badpkt;
-  if (flag != 0 && flag != REQFLAG_DESONLY) {
+  if (check_flags(flags)) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
+    no_send=1;
     goto freeall;
   }
-  desonly=0;
-  if (flag == REQFLAG_DESONLY)
-    desonly=1;
-
   if (check_target(sess, target))
     goto freeall;
 
@@ -1892,7 +1884,7 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (princid == 0)
     goto freeall;
 
-  if (generate_keys(sess, princid, desonly))
+  if (generate_keys(sess, princid, flags))
     goto freeall;
 
   buf_setlength(buf, 0);

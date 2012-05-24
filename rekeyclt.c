@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
   int flag=0;
   int optch;
   
-  while ((optch = getopt(argc, argv, "k:r:s:d")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:dDA")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -84,8 +84,14 @@ int main(int argc, char **argv) {
     case 'd':
       flag|=REQFLAG_DESONLY;
       break;
+    case 'D':
+      flag|=REQFLAG_NODES;
+      break;
+    case 'A':
+      flag|=REQFLAG_COMPAT_ENCTYPE;
+      break;
     case '?':
-      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d] command [args]\n");
+      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d|-D] [-A] command [args]\n");
       exit(1);
     }
   }
@@ -102,6 +108,11 @@ int main(int argc, char **argv) {
     exit(1);
   }
   targetname=argv[optind++];
+  if ((flag & (REQFLAG_DESONLY|REQFLAG_NODES)) 
+      == (REQFLAG_DESONLY|REQFLAG_NODES)) {
+    fprintf(stderr, "Cannot use both -d (des only) and -D (no des) flags\n");
+    exit(1);
+  }
   ssl_startup();
   if (!servername)
     servername = get_server(realm);

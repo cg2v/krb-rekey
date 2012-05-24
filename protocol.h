@@ -198,6 +198,11 @@
 
    /* only create des keys for this principal */
 #define REQFLAG_DESONLY 0x1
+   /* do not create des keys for this principal */
+#define REQFLAG_NODES 0x2
+   /* do not create post-1510 enctypes for this principal */
+#define REQFLAG_COMPAT_ENCTYPE 0x4
+#define REQFLAG_MASK 0x7
 
   /* this host has commited the key */
 #define STATUSFLAG_COMPLETE 0x1
