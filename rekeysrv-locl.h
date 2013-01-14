@@ -1,4 +1,3 @@
-
 #ifndef _SRV_LOCL_H
 #define _SRV_LOCL_H
 
@@ -45,7 +44,11 @@
 #include <openssl/crypto.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-void ssl_fatal(SSL *, int);
+void ssl_fatal(SSL *, int)
+#ifdef HAVE___ATTRIBUTE__
+  __attribute__((noreturn))
+#endif
+;
 SSL *do_ssl_accept(int s);
 #endif
 
@@ -82,7 +85,6 @@ struct rekey_session {
 struct rekey_session;
 #endif
 
-#define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu"
 #define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
 
 struct gss_OID_desc_struct;
@@ -110,14 +112,16 @@ int sql_commit_trans(struct rekey_session *);
 int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
+int is_admin(const char *username); /* should be session, but then principal accessor functions would have to be generalized */
 
 void fatal(const char *, ...)
-#if __GNUC__ > 2
-__attribute__((format(printf, 1, 2)))
+#ifdef HAVE___ATTRIBUTE__
+  __attribute__((noreturn))
+  __attribute__((format(printf, 1, 2)))
 #endif
 ;
 void prtmsg(const char *, ...)
-#if __GNUC__ > 2
+#ifdef HAVE___ATTRIBUTE__
 __attribute__((format(printf, 1, 2)))
 #endif
 ;

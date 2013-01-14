@@ -51,16 +51,21 @@ void prt_err_reply(struct mem_buffer *);
 
 
 void fatal(const char *, ...)
-#if __GNUC__ > 2
-__attribute__((format(printf, 1, 2)))
+#ifdef HAVE___ATTRIBUTE__
+  __attribute__((noreturn))
+  __attribute__((format(printf, 1, 2)))
 #endif
 ;
 void prtmsg(const char *, ...)
-#if __GNUC__ > 2
-__attribute__((format(printf, 1, 2)))
+#ifdef HAVE___ATTRIBUTE__
+  __attribute__((format(printf, 1, 2)))
 #endif
 ;
-void ssl_fatal(SSL *, int);
+void ssl_fatal(SSL *, int)
+#ifdef HAVE___ATTRIBUTE__
+  __attribute__((noreturn))
+#endif
+  ;
 
 /* provided independently by client & server */
 void vprtmsg(const char *, va_list ap);

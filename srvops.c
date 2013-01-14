@@ -236,47 +236,51 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
 
   if (compare_princ_comp(c1, "kadmin"))
      goto badprinc;
-  {
-    char *rs=dup_comp_string(princ_realm);
-    if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
+  if (princ_ncomp_eq(sess->kctx, target, 2)) {
+    /* should never happen, but this should silence static analyzers */
+    if (c2 == NULL)
       goto badprinc;
-    free(rs);
+    if (compare_princ_comp(c1, "krbtgt")) {
+      char *rs=dup_comp_string(princ_realm);
+      if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
+	goto badprinc;
+      free(rs);
+    }
+    if (compare_princ_comp(c1, "K") && compare_princ_comp(c2, "M"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "root"))
+      goto badprinc;
+    /* idm/admin is a password. adm/admin will have to be done manually */
+    if (compare_princ_comp(c2, "admin"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "gatekeeper"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "ldap"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "admin-afs"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "cyradm"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "daemon"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "ftp"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "mail"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "misc"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "remote"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "z"))
+      goto badprinc;
+    if (compare_princ_comp(c2, "jabber"))
+      goto badprinc;
+    /* user/zephyr bad, zephyr/zephyr ok */
+    if (!compare_princ_comp(c1, "zephyr") && 
+	compare_princ_comp(c2, "zephyr"))
+      goto badprinc;
+    /* end two component */
   }
-  if (compare_princ_comp(c1, "K") && compare_princ_comp(c2, "M"))
-    goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "root"))
-     goto badprinc;
-  /* idm/admin is a password. adm/admin will have to be done manually */
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "admin"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "gatekeeper"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "ldap"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "admin-afs"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "cyradm"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "daemon"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "ftp"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "mail"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "misc"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "remote"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && compare_princ_comp(c2, "z"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2) && 
-      compare_princ_comp(c2, "jabber"))
-     goto badprinc;
-  /* user/zephyr bad, zephyr/zephyr ok */
-  if (princ_ncomp_eq(sess->kctx, target, 2) && 
-      !compare_princ_comp(c1, "zephyr") && 
-      compare_princ_comp(c2, "zephyr"))
-     goto badprinc;
 #endif
   ret=0;
   
@@ -538,7 +542,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
 static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t buf) 
 {
   int rc;
-  sqlite3_stmt *st;
+  sqlite3_stmt *st=NULL;
   int enctype, n;
   size_t l, curlen, last;
   const unsigned char *key;
@@ -1413,7 +1417,7 @@ static void s_status(struct rekey_session *sess, mb_t buf)
 static void s_getkeys(struct rekey_session *sess, mb_t buf)
 {
   int m, rc;
-  sqlite3_stmt *st, *updatt, *updcount;
+  sqlite3_stmt *st=NULL, *updatt=NULL, *updcount=NULL;
   sqlite_int64 principal;
   const char *pname;
   char **names=NULL;

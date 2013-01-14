@@ -11,6 +11,7 @@ AC_CONFIG_HEADER([config.h])
 AC_PROG_CC
 gl_EARLY
 AX_CFLAGS_WARN_ALL
+AX_C___ATTRIBUTE__
 gl_INIT
 AC_DEFINE([REPLACE_VASNPRINTF], [1], [rename vasnprintf to avoid cross-library api conflicts])
 # Checks for typedefs, structures, and compiler characteristics.
