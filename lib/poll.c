@@ -1,7 +1,7 @@
 /* Emulation for poll(2)
    Contributed by Paolo Bonzini.
 
-   Copyright 2001-2003, 2006-2010 Free Software Foundation, Inc.
+   Copyright 2001-2003, 2006-2011 Free Software Foundation, Inc.
 
    This file is part of gnulib.
 
@@ -28,7 +28,10 @@
 #include <alloca.h>
 
 #include <sys/types.h>
-#include "poll.h"
+
+/* Specification.  */
+#include <poll.h>
+
 #include <errno.h>
 #include <limits.h>
 #include <assert.h>
@@ -150,6 +153,8 @@ win32_compute_revents (HANDLE h, int *p_sought)
           if (avail)
             happened |= *p_sought & (POLLIN | POLLRDNORM);
         }
+      else if (GetLastError () == ERROR_BROKEN_PIPE)
+        happened |= POLLHUP;
 
       else
         {
@@ -310,10 +315,7 @@ compute_revents (int fd, int sought, fd_set *rfds, fd_set *wfds, fd_set *efds)
 #endif /* !MinGW */
 
 int
-poll (pfd, nfd, timeout)
-     struct pollfd *pfd;
-     nfds_t nfd;
-     int timeout;
+poll (struct pollfd *pfd, nfds_t nfd, int timeout)
 {
 #ifndef WIN32_NATIVE
   fd_set rfds, wfds, efds;
@@ -503,7 +505,7 @@ poll (pfd, nfd, timeout)
           if (sought)
             handle_array[nhandles++] = h;
           if (pfd[i].revents)
-            wait_timeout = 0;
+            timeout = 0;
         }
     }
 

@@ -1,7 +1,7 @@
 /* Emulation for select(2)
    Contributed by Paolo Bonzini.
 
-   Copyright 2008-2010 Free Software Foundation, Inc.
+   Copyright 2008-2011 Free Software Foundation, Inc.
 
    This file is part of gnulib.
 
@@ -132,6 +132,8 @@ win32_poll_handle (HANDLE h, int fd, struct bitset *rbits, struct bitset *wbits,
           if (avail)
             read = TRUE;
         }
+      else if (GetLastError () == ERROR_BROKEN_PIPE)
+        ;
 
       else
         {

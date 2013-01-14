@@ -1,5 +1,5 @@
-# signbit.m4 serial 6
-dnl Copyright (C) 2007-2010 Free Software Foundation, Inc.
+# signbit.m4 serial 9
+dnl Copyright (C) 2007-2011 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
@@ -9,7 +9,8 @@ AC_DEFUN([gl_SIGNBIT],
   AC_REQUIRE([gl_MATH_H_DEFAULTS])
   AC_CACHE_CHECK([for signbit macro], [gl_cv_func_signbit],
     [
-      AC_TRY_RUN([
+      AC_RUN_IFELSE(
+        [AC_LANG_SOURCE([[
 #include <math.h>
 /* If signbit is defined as a function, don't use it, since calling it for
    'float' or 'long double' arguments would involve conversions.
@@ -23,7 +24,9 @@ AC_DEFUN([gl_SIGNBIT],
 #endif
 #include <string.h>
 ]gl_SIGNBIT_TEST_PROGRAM
-, [gl_cv_func_signbit=yes], [gl_cv_func_signbit=no],
+])],
+        [gl_cv_func_signbit=yes],
+        [gl_cv_func_signbit=no],
         [gl_cv_func_signbit="guessing no"])
     ])
   dnl GCC 4.0 and newer provides three built-ins for signbit.
@@ -32,7 +35,8 @@ AC_DEFUN([gl_SIGNBIT],
   dnl libc.
   AC_CACHE_CHECK([for signbit compiler built-ins], [gl_cv_func_signbit_gcc],
     [
-      AC_TRY_RUN([
+      AC_RUN_IFELSE(
+        [AC_LANG_SOURCE([[
 #if __GNUC__ >= 4
 # define signbit(x) \
    (sizeof (x) == sizeof (long double) ? __builtin_signbitl (x) : \
@@ -43,7 +47,9 @@ AC_DEFUN([gl_SIGNBIT],
 #endif
 #include <string.h>
 ]gl_SIGNBIT_TEST_PROGRAM
-, [gl_cv_func_signbit_gcc=yes], [gl_cv_func_signbit_gcc=no],
+])],
+        [gl_cv_func_signbit_gcc=yes],
+        [gl_cv_func_signbit_gcc=no],
         [gl_cv_func_signbit_gcc="guessing no"])
     ])
   dnl Use the compiler built-ins whenever possible, because they are more
@@ -67,9 +73,11 @@ AC_DEFUN([gl_SIGNBIT],
           AC_CACHE_CHECK([whether copysignf can be used without linking with libm],
             [gl_cv_func_copysignf_no_libm],
             [
-              AC_TRY_LINK([#include <math.h>
-                           float x, y;],
-                          [return copysignf (x, y) < 0;],
+              AC_LINK_IFELSE(
+                [AC_LANG_PROGRAM(
+                   [[#include <math.h>
+                     float x, y;]],
+                   [[return copysignf (x, y) < 0;]])],
                 [gl_cv_func_copysignf_no_libm=yes],
                 [gl_cv_func_copysignf_no_libm=no])
             ])
@@ -87,9 +95,11 @@ AC_DEFUN([gl_SIGNBIT],
           AC_CACHE_CHECK([whether copysign can be used without linking with libm],
             [gl_cv_func_copysign_no_libm],
             [
-              AC_TRY_LINK([#include <math.h>
-                           double x, y;],
-                          [return copysign (x, y) < 0;],
+              AC_LINK_IFELSE(
+                [AC_LANG_PROGRAM(
+                   [[#include <math.h>
+                     double x, y;]],
+                   [[return copysign (x, y) < 0;]])],
                 [gl_cv_func_copysign_no_libm=yes],
                 [gl_cv_func_copysign_no_libm=no])
             ])
@@ -107,9 +117,11 @@ AC_DEFUN([gl_SIGNBIT],
           AC_CACHE_CHECK([whether copysignl can be used without linking with libm],
             [gl_cv_func_copysignl_no_libm],
             [
-              AC_TRY_LINK([#include <math.h>
-                           long double x, y;],
-                          [return copysignl (x, y) < 0;],
+              AC_LINK_IFELSE(
+                [AC_LANG_PROGRAM(
+                   [[#include <math.h>
+                     long double x, y;]],
+                   [[return copysignl (x, y) < 0;]])],
                 [gl_cv_func_copysignl_no_libm=yes],
                 [gl_cv_func_copysignl_no_libm=no])
             ])
@@ -148,7 +160,8 @@ long double m0l = -LDBL_MIN * LDBL_MIN;
 #else
 long double m0l = -p0l;
 #endif
-  if (signbit (vf))
+  int result = 0;
+  if (signbit (vf)) /* link check */
     vf++;
   {
     float plus_inf = 1.0f / p0f;
@@ -159,9 +172,9 @@ long double m0l = -p0l;
           && (memcmp (&m0f, &p0f, sizeof (float)) == 0 || signbit (m0f))
           && !signbit (plus_inf)
           && signbit (minus_inf)))
-      return 1;
+      result |= 1;
   }
-  if (signbit (vd))
+  if (signbit (vd)) /* link check */
     vd++;
   {
     double plus_inf = 1.0 / p0d;
@@ -172,22 +185,27 @@ long double m0l = -p0l;
           && (memcmp (&m0d, &p0d, sizeof (double)) == 0 || signbit (m0d))
           && !signbit (plus_inf)
           && signbit (minus_inf)))
-      return 1;
+      result |= 2;
   }
-  if (signbit (vl))
+  if (signbit (vl)) /* link check */
     vl++;
   {
     long double plus_inf = 1.0L / p0l;
     long double minus_inf = -1.0L / p0l;
-    if (!(!signbit (255.0L)
-          && signbit (-255.0L)
-          && !signbit (p0l)
-          && (memcmp (&m0l, &p0l, sizeof (long double)) == 0 || signbit (m0l))
-          && !signbit (plus_inf)
-          && signbit (minus_inf)))
-      return 1;
+    if (signbit (255.0L))
+      result |= 4;
+    if (!signbit (-255.0L))
+      result |= 4;
+    if (signbit (p0l))
+      result |= 8;
+    if (!(memcmp (&m0l, &p0l, sizeof (long double)) == 0 || signbit (m0l)))
+      result |= 16;
+    if (signbit (plus_inf))
+      result |= 32;
+    if (!signbit (minus_inf))
+      result |= 64;
   }
-  return 0;
+  return result;
 }
 ]])
 
@@ -211,7 +229,8 @@ AC_DEFUN([gl_FLOATTYPE_SIGN_LOCATION],
   AC_CACHE_CHECK([where to find the sign bit in a '$1'],
     [$2],
     [
-      AC_TRY_RUN([
+      AC_RUN_IFELSE(
+        [AC_LANG_SOURCE([[
 #include <stddef.h>
 #include <stdio.h>
 #define NWORDS \
@@ -236,7 +255,7 @@ int main ()
         {
           /* More than one bit difference.  */
           fprintf (fp, "unknown");
-          return 1;
+          return 2;
         }
       if (x)
         {
@@ -248,7 +267,7 @@ int main ()
     {
       /* No difference.  */
       fprintf (fp, "unknown");
-      return 1;
+      return 3;
     }
   /* Now m = plus.word[k] ^ ~minus.word[k].  */
   if (plus.word[k] & ~minus.word[k])
@@ -256,15 +275,17 @@ int main ()
       /* Oh? The sign bit is set in the positive and cleared in the negative
          numbers?  */
       fprintf (fp, "unknown");
-      return 1;
+      return 4;
     }
   for (i = 0; ; i++)
     if ((m >> i) & 1)
       break;
   fprintf (fp, "word %d bit %d", (int) k, (int) i);
-  return (fclose (fp) != 0);
+  if (fclose (fp) != 0)
+    return 5;
+  return 0;
 }
-        ],
+        ]])],
         [$2=`cat conftest.out`],
         [$2="unknown"],
         [
@@ -285,3 +306,43 @@ int main ()
       ;;
   esac
 ])
+
+# Expands to code that defines a function signbitf(float).
+# It extracts the sign bit of a non-NaN value.
+AC_DEFUN([gl_FLOAT_SIGNBIT_CODE],
+[
+  gl_FLOATTYPE_SIGNBIT_CODE([float], [f], [f])
+])
+
+# Expands to code that defines a function signbitd(double).
+# It extracts the sign bit of a non-NaN value.
+AC_DEFUN([gl_DOUBLE_SIGNBIT_CODE],
+[
+  gl_FLOATTYPE_SIGNBIT_CODE([double], [d], [])
+])
+
+# Expands to code that defines a function signbitl(long double).
+# It extracts the sign bit of a non-NaN value.
+AC_DEFUN([gl_LONG_DOUBLE_SIGNBIT_CODE],
+[
+  gl_FLOATTYPE_SIGNBIT_CODE([long double], [l], [L])
+])
+
+AC_DEFUN([gl_FLOATTYPE_SIGNBIT_CODE],
+[[
+static int
+signbit$2 ($1 value)
+{
+  typedef union { $1 f; unsigned char b[sizeof ($1)]; } float_union;
+  static float_union plus_one = { 1.0$3 };   /* unused bits are zero here */
+  static float_union minus_one = { -1.0$3 }; /* unused bits are zero here */
+  /* Compute the sign bit mask as the XOR of plus_one and minus_one.  */
+  float_union u;
+  unsigned int i;
+  u.f = value;
+  for (i = 0; i < sizeof ($1); i++)
+    if (u.b[i] & (plus_one.b[i] ^ minus_one.b[i]))
+      return 1;
+  return 0;
+}
+]])

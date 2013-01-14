@@ -1,5 +1,5 @@
-# ldexpl.m4 serial 5
-dnl Copyright (C) 2007-2010 Free Software Foundation, Inc.
+# ldexpl.m4 serial 10
+dnl Copyright (C) 2007-2011 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
@@ -7,29 +7,24 @@ dnl with or without modifications, as long as this notice is preserved.
 AC_DEFUN([gl_FUNC_LDEXPL],
 [
   AC_REQUIRE([gl_MATH_H_DEFAULTS])
+  AC_REQUIRE([gl_FUNC_ISNANL]) dnl for ISNANL_LIBM
   dnl Check whether it's declared.
   dnl MacOS X 10.3 has ldexpl() in libc but doesn't declare it in <math.h>.
   AC_CHECK_DECL([ldexpl], , [HAVE_DECL_LDEXPL=0], [#include <math.h>])
   LDEXPL_LIBM=
   if test $HAVE_DECL_LDEXPL = 1; then
-    AC_CACHE_CHECK([whether ldexpl() can be used without linking with libm],
-      [gl_cv_func_ldexpl_no_libm],
-      [
-        AC_TRY_LINK([#include <math.h>
-                     long double x;],
-                    [return ldexpl (x, -1) > 0;],
-          [gl_cv_func_ldexpl_no_libm=yes],
-          [gl_cv_func_ldexpl_no_libm=no])
-      ])
+    gl_CHECK_LDEXPL_NO_LIBM
     if test $gl_cv_func_ldexpl_no_libm = no; then
       AC_CACHE_CHECK([whether ldexpl() can be used with libm],
         [gl_cv_func_ldexpl_in_libm],
         [
           save_LIBS="$LIBS"
           LIBS="$LIBS -lm"
-          AC_TRY_LINK([#include <math.h>
-                       long double x;],
-                      [return ldexpl (x, -1) > 0;],
+          AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM(
+               [[#include <math.h>
+                 long double x;]],
+               [[return ldexpl (x, -1) > 0;]])],
             [gl_cv_func_ldexpl_in_libm=yes],
             [gl_cv_func_ldexpl_in_libm=no])
           LIBS="$save_LIBS"
@@ -46,7 +41,7 @@ AC_DEFUN([gl_FUNC_LDEXPL],
       LIBS="$save_LIBS"
       case "$gl_cv_func_ldexpl_works" in
         *yes) gl_func_ldexpl=yes ;;
-        *)    gl_func_ldexpl=no; REPLACE_LDEXPL=1; LDEXPL_LIBM= ;;
+        *)    gl_func_ldexpl=no; REPLACE_LDEXPL=1 ;;
       esac
     else
       gl_func_ldexpl=no
@@ -58,8 +53,26 @@ AC_DEFUN([gl_FUNC_LDEXPL],
   fi
   if test $HAVE_DECL_LDEXPL = 0 || test $gl_func_ldexpl = no; then
     AC_LIBOBJ([ldexpl])
+    LDEXPL_LIBM="$ISNANL_LIBM"
   fi
   AC_SUBST([LDEXPL_LIBM])
+])
+
+dnl Test whether ldexpl() can be used without linking with libm.
+dnl Set gl_cv_func_ldexpl_no_libm to 'yes' or 'no' accordingly.
+AC_DEFUN([gl_CHECK_LDEXPL_NO_LIBM],
+[
+  AC_CACHE_CHECK([whether ldexpl() can be used without linking with libm],
+    [gl_cv_func_ldexpl_no_libm],
+    [
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM(
+           [[#include <math.h>
+             long double x;]],
+           [[return ldexpl (x, -1) > 0;]])],
+        [gl_cv_func_ldexpl_no_libm=yes],
+        [gl_cv_func_ldexpl_no_libm=no])
+    ])
 ])
 
 dnl Test whether ldexpl() works on finite numbers (this fails on AIX 5.1
@@ -70,21 +83,36 @@ AC_DEFUN([gl_FUNC_LDEXPL_WORKS],
   AC_REQUIRE([AC_CANONICAL_HOST]) dnl for cross-compiles
   AC_CACHE_CHECK([whether ldexpl works], [gl_cv_func_ldexpl_works],
     [
-      AC_TRY_RUN([
+      AC_RUN_IFELSE(
+        [AC_LANG_SOURCE([[
 #include <math.h>
 extern long double ldexpl (long double, int);
 int main()
 {
-  volatile long double x1 = 1.0;
-  volatile long double y1 = ldexpl (x1, -1);
-  volatile long double x2 = 1.73205L;
-  volatile long double y2 = ldexpl (x2, 0);
-  return (y1 != 0.5L) || (y2 != x2);
-}], [gl_cv_func_ldexpl_works=yes], [gl_cv_func_ldexpl_works=no],
-      [case "$host_os" in
-         aix*) gl_cv_func_ldexpl_works="guessing no";;
-         *)    gl_cv_func_ldexpl_works="guessing yes";;
-       esac
-      ])
+  int result = 0;
+  {
+    volatile long double x = 1.0;
+    volatile long double y = ldexpl (x, -1);
+    if (y != 0.5L)
+      result |= 1;
+  }
+  {
+    volatile long double x = 1.73205L;
+    volatile long double y = ldexpl (x, 0);
+    if (y != x)
+      result |= 2;
+  }
+  return result;
+}]])],
+        [gl_cv_func_ldexpl_works=yes],
+        [gl_cv_func_ldexpl_works=no],
+        [
+changequote(,)dnl
+         case "$host_os" in
+           aix | aix[3-6]*) gl_cv_func_ldexpl_works="guessing no";;
+           *)               gl_cv_func_ldexpl_works="guessing yes";;
+         esac
+changequote([,])dnl
+        ])
     ])
 ])

@@ -1,5 +1,5 @@
 # DO NOT EDIT! GENERATED AUTOMATICALLY!
-# Copyright (C) 2002-2010 Free Software Foundation, Inc.
+# Copyright (C) 2002-2011 Free Software Foundation, Inc.
 #
 # This file is free software, distributed under the terms of the GNU
 # General Public License.  As a special exception to the GNU General
@@ -12,7 +12,8 @@
 # This file represents the compiled summary of the specification in
 # gnulib-cache.m4. It lists the computed macro invocations that need
 # to be invoked from configure.ac.
-# In projects using CVS, this file can be treated like other built files.
+# In projects that use version control, this file can be treated like
+# other built files.
 
 
 # This macro should be invoked from ./configure.ac, in the section
@@ -31,11 +32,11 @@ AC_DEFUN([gl_EARLY],
   # Code from module arg-nonnull:
   # Code from module arpa_inet:
   # Code from module c++defs:
-  # Code from module close-hook:
   # Code from module environ:
   # Code from module errno:
   # Code from module extensions:
   AC_REQUIRE([gl_USE_SYSTEM_EXTENSIONS])
+  # Code from module fd-hook:
   # Code from module float:
   # Code from module fpieee:
   AC_REQUIRE([gl_FP_IEEE])
@@ -61,11 +62,13 @@ AC_DEFUN([gl_EARLY],
   # Code from module netinet_in:
   # Code from module nocrash:
   # Code from module poll:
+  # Code from module poll-h:
   # Code from module printf-frexp:
   # Code from module printf-frexpl:
   # Code from module printf-safe:
   # Code from module pthread:
   # Code from module realloc-posix:
+  # Code from module sched:
   # Code from module select:
   # Code from module servent:
   # Code from module setenv:
@@ -73,6 +76,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module size_max:
   # Code from module snprintf:
   # Code from module snprintf-posix:
+  # Code from module socketlib:
   # Code from module sockets:
   # Code from module socklen:
   # Code from module sprintf-posix:
@@ -86,10 +90,13 @@ AC_DEFUN([gl_EARLY],
   # Code from module sys_select:
   # Code from module sys_socket:
   # Code from module sys_time:
+  # Code from module sys_uio:
+  # Code from module time:
   # Code from module unistd:
   # Code from module vasnprintf:
   # Code from module vasprintf:
   # Code from module vasprintf-posix:
+  # Code from module verify:
   # Code from module warn-on-use:
   # Code from module wchar:
   # Code from module xsize:
@@ -111,150 +118,92 @@ AC_DEFUN([gl_INIT],
   m4_pushdef([gl_LIBSOURCES_DIR], [])
   gl_COMMON
   gl_source_base='lib'
-  # Code from module alignof:
-  # Code from module alloca:
-  # Code from module alloca-opt:
-  gl_FUNC_ALLOCA
-  # Code from module arg-nonnull:
-  # Code from module arpa_inet:
-  gl_HEADER_ARPA_INET
-  AC_PROG_MKDIR_P
-  # Code from module c++defs:
-  # Code from module close-hook:
-  # Code from module environ:
-  gl_ENVIRON
-  gl_UNISTD_MODULE_INDICATOR([environ])
-  # Code from module errno:
-  gl_HEADER_ERRNO_H
-  # Code from module extensions:
-  # Code from module float:
-  gl_FLOAT_H
-  # Code from module fpieee:
-  # Code from module fpucw:
-  # Code from module frexp-nolibm:
-  gl_FUNC_FREXP_NO_LIBM
-  gl_MATH_MODULE_INDICATOR([frexp])
-  # Code from module frexpl-nolibm:
-  gl_FUNC_FREXPL_NO_LIBM
-  gl_MATH_MODULE_INDICATOR([frexpl])
-  # Code from module getaddrinfo:
-  gl_GETADDRINFO
-  gl_NETDB_MODULE_INDICATOR([getaddrinfo])
-  # Code from module getopt-posix:
-  gl_FUNC_GETOPT_POSIX
-  # Code from module gettext-h:
-  AC_SUBST([LIBINTL])
-  AC_SUBST([LTLIBINTL])
-  # Code from module hostent:
-  gl_HOSTENT
-  # Code from module include_next:
-  # Code from module inet_ntop:
-  gl_FUNC_INET_NTOP
-  gl_ARPA_INET_MODULE_INDICATOR([inet_ntop])
-  # Code from module intprops:
-  # Code from module isnand-nolibm:
-  gl_FUNC_ISNAND_NO_LIBM
-  # Code from module isnanf-nolibm:
-  gl_FUNC_ISNANF_NO_LIBM
-  # Code from module isnanl-nolibm:
-  gl_FUNC_ISNANL_NO_LIBM
-  # Code from module malloc-posix:
-  gl_FUNC_MALLOC_POSIX
-  gl_STDLIB_MODULE_INDICATOR([malloc-posix])
-  # Code from module malloca:
-  gl_MALLOCA
-  # Code from module math:
-  gl_MATH_H
-  # Code from module memchr:
-  gl_FUNC_MEMCHR
-  gl_STRING_MODULE_INDICATOR([memchr])
-  # Code from module multiarch:
-  gl_MULTIARCH
-  # Code from module netdb:
-  gl_HEADER_NETDB
-  # Code from module netinet_in:
-  gl_HEADER_NETINET_IN
-  AC_PROG_MKDIR_P
-  # Code from module nocrash:
-  # Code from module poll:
-  gl_FUNC_POLL
-  # Code from module printf-frexp:
-  gl_FUNC_PRINTF_FREXP
-  # Code from module printf-frexpl:
-  gl_FUNC_PRINTF_FREXPL
-  # Code from module printf-safe:
-  m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
-  # Code from module pthread:
-  gl_PTHREAD_CHECK
-  # Code from module realloc-posix:
-  gl_FUNC_REALLOC_POSIX
-  gl_STDLIB_MODULE_INDICATOR([realloc-posix])
-  # Code from module select:
-  gl_FUNC_SELECT
-  gl_SYS_SELECT_MODULE_INDICATOR([select])
-  # Code from module servent:
-  gl_SERVENT
-  # Code from module setenv:
-  gl_FUNC_SETENV
-  gl_STDLIB_MODULE_INDICATOR([setenv])
-  # Code from module signbit:
-  gl_SIGNBIT
-  gl_MATH_MODULE_INDICATOR([signbit])
-  # Code from module size_max:
-  gl_SIZE_MAX
-  # Code from module snprintf:
-  gl_FUNC_SNPRINTF
-  gl_STDIO_MODULE_INDICATOR([snprintf])
-  # Code from module snprintf-posix:
-  gl_FUNC_SNPRINTF_POSIX
-  # Code from module sockets:
-  gl_SOCKETS
-  # Code from module socklen:
-  gl_TYPE_SOCKLEN_T
-  # Code from module sprintf-posix:
-  gl_FUNC_SPRINTF_POSIX
-  gl_STDIO_MODULE_INDICATOR([sprintf-posix])
-  # Code from module stdbool:
-  AM_STDBOOL_H
-  # Code from module stddef:
-  gl_STDDEF_H
-  # Code from module stdint:
-  gl_STDINT_H
-  # Code from module stdio:
-  gl_STDIO_H
-  # Code from module stdlib:
-  gl_STDLIB_H
-  # Code from module strerror:
-  gl_FUNC_STRERROR
-  gl_STRING_MODULE_INDICATOR([strerror])
-  # Code from module string:
-  gl_HEADER_STRING_H
-  # Code from module sys_select:
-  gl_HEADER_SYS_SELECT
-  AC_PROG_MKDIR_P
-  # Code from module sys_socket:
-  gl_HEADER_SYS_SOCKET
-  AC_PROG_MKDIR_P
-  # Code from module sys_time:
-  gl_HEADER_SYS_TIME_H
-  AC_PROG_MKDIR_P
-  # Code from module unistd:
-  gl_UNISTD_H
-  # Code from module vasnprintf:
-  gl_FUNC_VASNPRINTF
-  # Code from module vasprintf:
-  gl_FUNC_VASPRINTF
-  gl_STDIO_MODULE_INDICATOR([vasprintf])
-  m4_ifdef([AM_XGETTEXT_OPTION],
-    [AM_][XGETTEXT_OPTION([--flag=asprintf:2:c-format])
-     AM_][XGETTEXT_OPTION([--flag=vasprintf:2:c-format])])
-  # Code from module vasprintf-posix:
-  gl_FUNC_VASPRINTF_POSIX
-  # Code from module warn-on-use:
-  # Code from module wchar:
-  gl_WCHAR_H
-  # Code from module xsize:
-  gl_XSIZE
+gl_FUNC_ALLOCA
+gl_HEADER_ARPA_INET
+AC_PROG_MKDIR_P
+gl_ENVIRON
+gl_UNISTD_MODULE_INDICATOR([environ])
+gl_HEADER_ERRNO_H
+gl_FLOAT_H
+gl_FUNC_FREXP_NO_LIBM
+gl_MATH_MODULE_INDICATOR([frexp])
+gl_FUNC_FREXPL_NO_LIBM
+gl_MATH_MODULE_INDICATOR([frexpl])
+gl_GETADDRINFO
+gl_NETDB_MODULE_INDICATOR([getaddrinfo])
+gl_FUNC_GETOPT_POSIX
+AC_SUBST([LIBINTL])
+AC_SUBST([LTLIBINTL])
+gl_HOSTENT
+gl_FUNC_INET_NTOP
+gl_ARPA_INET_MODULE_INDICATOR([inet_ntop])
+gl_FUNC_ISNAND_NO_LIBM
+gl_FUNC_ISNANF_NO_LIBM
+gl_FUNC_ISNANL_NO_LIBM
+gl_FUNC_MALLOC_POSIX
+gl_STDLIB_MODULE_INDICATOR([malloc-posix])
+gl_MALLOCA
+gl_MATH_H
+gl_FUNC_MEMCHR
+gl_STRING_MODULE_INDICATOR([memchr])
+gl_MULTIARCH
+gl_HEADER_NETDB
+gl_HEADER_NETINET_IN
+AC_PROG_MKDIR_P
+gl_FUNC_POLL
+gl_POLL_MODULE_INDICATOR([poll])
+gl_POLL_H
+gl_FUNC_PRINTF_FREXP
+gl_FUNC_PRINTF_FREXPL
+m4_divert_text([INIT_PREPARE], [gl_printf_safe=yes])
+gl_PTHREAD_CHECK
+gl_FUNC_REALLOC_POSIX
+gl_STDLIB_MODULE_INDICATOR([realloc-posix])
+gl_SCHED_H
+gl_FUNC_SELECT
+gl_SYS_SELECT_MODULE_INDICATOR([select])
+gl_SERVENT
+gl_FUNC_SETENV
+gl_STDLIB_MODULE_INDICATOR([setenv])
+gl_SIGNBIT
+gl_MATH_MODULE_INDICATOR([signbit])
+gl_SIZE_MAX
+gl_FUNC_SNPRINTF
+gl_STDIO_MODULE_INDICATOR([snprintf])
+gl_MODULE_INDICATOR([snprintf])
+gl_FUNC_SNPRINTF_POSIX
+gl_SOCKETLIB
+gl_SOCKETS
+gl_TYPE_SOCKLEN_T
+gl_FUNC_SPRINTF_POSIX
+gl_STDIO_MODULE_INDICATOR([sprintf-posix])
+AM_STDBOOL_H
+gl_STDDEF_H
+gl_STDINT_H
+gl_STDIO_H
+gl_STDLIB_H
+gl_FUNC_STRERROR
+gl_STRING_MODULE_INDICATOR([strerror])
+gl_HEADER_STRING_H
+gl_HEADER_SYS_SELECT
+AC_PROG_MKDIR_P
+gl_HEADER_SYS_SOCKET
+AC_PROG_MKDIR_P
+gl_HEADER_SYS_TIME_H
+AC_PROG_MKDIR_P
+gl_HEADER_SYS_UIO
+AC_PROG_MKDIR_P
+gl_HEADER_TIME_H
+gl_UNISTD_H
+gl_FUNC_VASNPRINTF
+gl_FUNC_VASPRINTF
+gl_STDIO_MODULE_INDICATOR([vasprintf])
+m4_ifdef([AM_XGETTEXT_OPTION],
+  [AM_][XGETTEXT_OPTION([--flag=asprintf:2:c-format])
+   AM_][XGETTEXT_OPTION([--flag=vasprintf:2:c-format])])
+gl_FUNC_VASPRINTF_POSIX
+gl_WCHAR_H
+gl_XSIZE
   # End of code from modules
   m4_ifval(gl_LIBSOURCES_LIST, [
     m4_syscmd([test ! -d ]m4_defn([gl_LIBSOURCES_DIR])[ ||
@@ -404,9 +353,9 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/arpa_inet.in.h
   lib/asnprintf.c
   lib/asprintf.c
-  lib/close-hook.c
-  lib/close-hook.h
   lib/errno.in.h
+  lib/fd-hook.c
+  lib/fd-hook.h
   lib/float+.h
   lib/float.in.h
   lib/fpucw.h
@@ -449,6 +398,7 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/printf-parse.h
   lib/pthread.in.h
   lib/realloc.c
+  lib/sched.in.h
   lib/select.c
   lib/setenv.c
   lib/signbitd.c
@@ -462,7 +412,6 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/stdbool.in.h
   lib/stddef.in.h
   lib/stdint.in.h
-  lib/stdio-write.c
   lib/stdio.in.h
   lib/stdlib.in.h
   lib/strerror.c
@@ -470,17 +419,19 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/sys_select.in.h
   lib/sys_socket.in.h
   lib/sys_time.in.h
+  lib/sys_uio.in.h
+  lib/time.in.h
   lib/unistd.in.h
   lib/vasnprintf.c
   lib/vasnprintf.h
   lib/vasprintf.c
+  lib/verify.h
   lib/w32sock.h
   lib/wchar.in.h
   lib/xsize.h
   m4/00gnulib.m4
   m4/alloca.m4
   m4/arpa_inet_h.m4
-  m4/asm-underscore.m4
   m4/eealloc.m4
   m4/environ.m4
   m4/errno_h.m4
@@ -515,11 +466,13 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/netinet_in_h.m4
   m4/nocrash.m4
   m4/poll.m4
+  m4/poll_h.m4
   m4/printf-frexp.m4
   m4/printf-frexpl.m4
   m4/printf.m4
   m4/pthread.m4
   m4/realloc.m4
+  m4/sched_h.m4
   m4/select.m4
   m4/servent.m4
   m4/setenv.m4
@@ -527,6 +480,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/size_max.m4
   m4/snprintf-posix.m4
   m4/snprintf.m4
+  m4/socketlib.m4
   m4/sockets.m4
   m4/socklen.m4
   m4/sockpfaf.m4
@@ -542,6 +496,8 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/sys_select_h.m4
   m4/sys_socket_h.m4
   m4/sys_time_h.m4
+  m4/sys_uio_h.m4
+  m4/time_h.m4
   m4/unistd_h.m4
   m4/vasnprintf.m4
   m4/vasprintf-posix.m4
