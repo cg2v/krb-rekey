@@ -55,7 +55,6 @@
 #include <sys/signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <groups.h>
 
 #define SESS_PRIVATE
 #define NEED_KRB5
@@ -86,51 +85,7 @@ static krb5_enctype enctypes[] = {
   ENCTYPE_NULL
 };
 
-static int in_admin_group(const char *username) 
-{
-  GROUPS *g;
-  int rc, ret=0;
-  
-  g = groups_init();
-  if (!g) {
-    prtmsg("Cannot initialize groups library");
-    return 0;
-  }
-#ifdef GROUPS_FLAG_TLS
-  if (groups_config(g, GROUPS_FLAG_TLS, NULL) ||
-      groups_config(g, GROUPS_FLAG_TLS_CERT, NULL) ||
-      groups_config(g, GROUPS_FIELD_TLS_CADIR, "/etc/trustedcert") ||
-#ifdef GROUPS_FIELD_TLS_CAFILE
-      /* openldap 2.0 doesn't fully implement LDAP_OPT_X_TLS_CACERTDIR */
-      /* special build of libgroups deals with this, so must we */
-      groups_config(g, GROUPS_FIELD_TLS_CAFILE, "/etc/trustedcert/bundle-cmu.crt") ||
-#endif
-      groups_config(g, GROUPS_FLAG_NOAUTH, NULL) ||
-      groups_config(g, GROUPS_FLAG_RECURSE, NULL)) {
-    prtmsg("Cannot configure groups library: %s", groups_error(g));
-    goto freeall;
-  }
-#else
-  prtmsg("No SSL/TLS support in <groups.h>. authz checks will not be trustworthy");
-  if (groups_config(g, GROUPS_FLAG_NOAUTH, NULL) ||
-      groups_config(g, GROUPS_FLAG_RECURSE, NULL)) {
-    prtmsg("Cannot configure groups library: %s", groups_error(g));
-    goto freeall;
-  }
-#endif
-  
-  rc = groups_anyuser_in(g, username, REKEY_ADMIN_GROUP, "owner",
-                         GROUPS_ANYUSER_ANDREW | GROUPS_ANYUSER_TRYAUTHENT |
-                         GROUPS_ANYUSER_NOPTS);
-  
-  if (rc < 0)
-    prtmsg("Unable to check group membership: %s", groups_error(g));
-  else
-    ret = (rc > 0);
- freeall:
-  groups_destroy(g);
-  return ret;
-}
+
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 static int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val) {
   const char *s;
@@ -145,12 +100,11 @@ static int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val) {
   return 1;
 }
 #define compare_princ_comp(obj, ts) (strlen(obj) == strlen(ts) && !strcmp(obj, ts))
-#define get_comp_string(obj) strdup(obj)
-#define free_comp_string(str) str=NULL;
+#define dup_comp_string(obj) strdup(obj)
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
 #define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
 #define compare_princ_comp(obj, ts) (obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length))
-static char *get_comp_string(krb5_data *obj) {
+static char *dup_comp_string(krb5_data *obj) {
   char *ret;
   ret=malloc(obj->length+1);
   memcpy(ret, obj->data, obj->length);
@@ -198,16 +152,20 @@ static void check_authz(struct rekey_session *sess)
   if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
       compare_princ_comp(c1, "host")) {
     sess->is_host = 1;
-    sess->hostname=get_comp_string(c2);
+    sess->hostname=dup_comp_string(c2);
     if (!sess->hostname) /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
     return;
   }
   
+  /* a better interface would be to pass the whole session object to 
+     is_admin, but that would involve refactoring the principal accessor
+     stuff into exported functions so is_admin could use them */
+
   if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
       compare_princ_comp(c2, "admin")) {
-    username=get_comp_string(c1);
-    if (in_admin_group(username))
+    username=dup_comp_string(c1);
+    if (is_admin(username))
       sess->is_admin = 1;
     free(username);
   }
@@ -279,7 +237,7 @@ static int check_target(struct rekey_session *sess, krb5_principal target)
   if (compare_princ_comp(c1, "kadmin"))
      goto badprinc;
   {
-    char *rs=get_comp_string(princ_realm);
+    char *rs=dup_comp_string(princ_realm);
     if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
       goto badprinc;
     free(rs);
@@ -530,6 +488,8 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
 			  -1, &ins, NULL);
+  if (rc != SQLITE_OK)
+    goto dberr;
   for (;*pEtype != ENCTYPE_NULL; pEtype++) {
     if (reqflags & REQFLAG_DESONLY && *pEtype > ENCTYPE_DES_CBC_CRC)
       continue;
@@ -1629,15 +1589,15 @@ static void s_getkeys(struct rekey_session *sess, mb_t buf)
    the kdb. Replies with OK if successful. */
 static void s_commitkey(struct rekey_session *sess, mb_t buf)
 {
-  sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL;
-  sqlite_int64 princid;
+  sqlite3_stmt *getprinc=NULL, *updcomp=NULL, *updcount=NULL, *aclchk=NULL;
+  sqlite_int64 princid, downloaded;
   krb5_kvno kvno;
   unsigned int lkvno;
   int no_send = 0;
   char *principal = NULL, *unp;
   int dbaction=0, rc, match;
   krb5_principal target=NULL;
-    
+  int allowed=0;
 
   if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
@@ -1669,14 +1629,6 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
 #else
   krb5_free_unparsed_name(sess->kctx, unp);
 #endif
-  if (sess->is_admin == 0 &&
-      !krb5_principal_compare(sess->kctx, 
-			      sess->princ,
-			      target)) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
-    prtmsg("Not authorized to commitkey");
-    return;
-  }
 
 
   if (buf_getint(buf, &lkvno))
@@ -1730,7 +1682,36 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     if (sql_begin_trans(sess))
       goto dberr;
     dbaction = -1;
+    rc = sqlite3_prepare(sess->dbh,"SELECT attempted FROM acl WHERE hostname=? AND principal=?",
+			 -1, &aclchk, NULL);
     
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_bind_text(aclchk, 1, sess->hostname, 
+			   strlen(sess->hostname), SQLITE_STATIC);
+    if (rc != SQLITE_OK)
+    goto dberr;
+    rc = sqlite3_bind_int(aclchk, 2, princid);
+    if (rc != SQLITE_OK)
+      goto dberr;
+    rc = sqlite3_step(aclchk);
+    if (rc != SQLITE_ROW) {
+      send_error(sess, ERR_AUTHZ, "You are not allowed to update this principal");
+      prtmsg("%s tried to commit %s %d, but it is not on the acl",
+	     sess->hostname, principal, kvno);
+      goto freeall;
+    }   
+    downloaded = sqlite3_column_int64(aclchk, 0);
+    sqlite3_finalize(aclchk);
+    aclchk=NULL;
+    if (downloaded == 0) {
+      send_error(sess, ERR_AUTHZ, "You are not allowed to update this principal");
+      prtmsg("%s tried to commit %s %d, but it did not fetch it yet.",
+	     sess->hostname, principal, kvno);
+      goto freeall;
+      
+    }
+
     rc = sqlite3_prepare_v2(sess->dbh, 
                             "UPDATE acl SET completed = 1 WHERE principal = ? AND hostname = ?;",
                             -1, &updcomp, NULL);
@@ -1768,7 +1749,23 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     /* at this point, the client doesn't care about future errors */
     sess_send(sess, RESP_OK, NULL);
     no_send = 1;
+  } else {
+    if (sess->is_admin == 1)
+      allowed=1;
+
+    if (allowed == 0 &&
+	krb5_principal_compare(sess->kctx, 
+			       sess->princ,
+			       target)) 
+      allowed=1;
+    if (allowed == 0) {
+      send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator, an allowed host, or the target)");
+      prtmsg("Not authorized to commitkey");
+      return;
+    }
   }
+
+
   
   match = check_uncommited(sess, princid);
   if (match < 0)
@@ -1796,6 +1793,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
  freeall:
   if (getprinc)
     sqlite3_finalize(getprinc);
+  if (aclchk)
+    sqlite3_finalize(aclchk);
   if (updcomp)
     sqlite3_finalize(updcomp);
   if (updcount)
