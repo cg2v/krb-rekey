@@ -1,0 +1,24 @@
+MAKE=gmake
+SYS=`sys`
+
+
+case ${SYS} in
+        sun4x_58)
+                CC="gcc"
+                CFLAGS="-g -O2"
+                ;;
+        i386_*)
+                CC="gcc"
+                CFLAGS="-g -O2"
+                ;;
+        sun4x_s10)
+                CC="cc"
+                CFLAGS="-g -O -xs"
+		CPPFLAGS=-I/usr/local/include
+		LDFLAGS=-L/usr/local/lib
+                ;;
+esac
+export MAKE CC CFLAGS CPPFLAGS LDFLAGS
+LNCOMMAND="${SRCDIR}/configure --prefix=/usr/local ${LNFLAGS}"
+GNU_INSTALL_PREFIX="prefix=${DESTDIR}"
+

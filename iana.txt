@@ -1,0 +1,62 @@
+> What message formats are used?
+> [The sequence of fields in a message. For example, length, opcode,
+> argument, filename, null.]
+
+The entire protocol is wrapped in TLS. The TLS is not wrapped at all; it
+runs directly over the tcp stream.
+
+The TLS-wrapped contents consists of packets containing a 1 byte
+opcode, 4 byte data length, and an opcode-specifc blob. Request and
+response packets both use this format.
+
+> What message types are used?
+> [The kinds of messages in the protocol. For example, request, reply,
+> cancel, interrupt.]
+
+request, reply
+
+> What message op codes are used?
+> [The operation codes in the protocol. For example, read, write,
+> delete, restore.]
+
+request opcodes include authenticate, authentication error, establish
+GSSAPI channel binding, new request, status, get keys, commit key,
+immediate key, abort request, finalize request.  
+Reply opcodes include authenticate, authentication error, establish
+GSSAPI channel binding, error, fatal error, ok, status, key list.
+
+> What message sequences are used?
+> [The allowed sequences of messages. For example, a client sends a
+> request and must wait for a reply from the server, except it can
+> send a cancel.]
+
+All requests must wait for a reply. There are no cancels or
+pipelining.  All sequences must begin (C)authenticate, (S)authenticate,
+[(C)authenticate, (S)authenticate...], (C)establish channel binding,
+(S)establish channel binding.  
+After that any other command is allowed, subject to authorization. The
+most common sequences will be a simple (C)"new request", (S)ok pair,
+or (C)"get keys", (S)keys followed by one or more sequences of
+(C)"commit key", (S)ok
+
+> What functions are performed by this protocol?
+
+This protocol allows the key of a kerberos principal that is shared
+among several hosts to be updated safely (that is, the updated key is
+only used by the kerberos kdc after all the hosts possess it) The
+protocol allows an administrator to start the process of rekeying a
+principal ("new request"), check the status of a request ("status"),
+or abort it ("abort"), and allows hosts to fetch the keysets that they
+are entitled to ("get keys") and inform the service that a keyset has
+been saved locally ("commit key")
+
+> Please give us a technical description of your proposed use of the
+> user port number. (At least 2 paragraphs)
+
+
+> What is the proposed name of the user port number? (For example:
+> Super User Message Service)
+
+> What SHORT name (14 CHARACTER MAXIMUM) do you want associated with
+> this port number? (For example: sums)
+
