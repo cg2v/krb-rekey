@@ -921,12 +921,21 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
   if (buf_getint(buf, &l))
     goto badpkt;
   in.length = l;
-  in.value = buf->cursor;
+  in.value = malloc(l);
+  if (!in.value) {
+    send_fatal(sess, ERR_OTHER, "Out of memory receiving auth token");
+    fatal("Out of memory receiving auth token");
+  }
+  if (buf_getdata(buf, in.value, l)) {
+    free(in.value);
+    goto badpkt;
+  }
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
 			       &in, GSS_C_NO_CHANNEL_BINDINGS,
 			       &sess->name, &sess->mech, &out, &rflag, NULL,
 			       NULL);
+  free(in.value);
   if (GSS_ERROR(maj)) {
     if (out.length) {
       send_gss_token(sess, RESP_AUTHERR, 0, &out);
@@ -1043,12 +1052,21 @@ static void s_autherr(struct rekey_session *sess, mb_t buf)
   if (buf_getint(buf, (unsigned int *)&l))
     goto badpkt;
   in.length=l;
-  in.value = buf->cursor;
+  in.value = malloc(l);
+  if (!in.value) {
+    send_fatal(sess, ERR_OTHER, "Out of memory receiving auth token");
+    fatal("Out of memory receiving auth token");
+  }
+  if (buf_getdata(buf, in.value, l)) {
+    free(in.value);
+    goto badpkt;
+  }
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
 			       &in, GSS_C_NO_CHANNEL_BINDINGS,
 			       &sess->name, &sess->mech, &out, NULL, NULL,
 			       NULL);
+  free(in.value);
   if (GSS_ERROR(maj)) {
     prt_gss_error(sess->mech, maj, min);
   } else {
