@@ -96,7 +96,7 @@ struct mem_buffer *buf_alloc(size_t size) {
   if (size == 0)
     return (struct mem_buffer *)calloc(1, sizeof(struct mem_buffer));
 
-  for (i=0;i < 1; i++) {
+  for (i=0;i <= 1; i++) {
     for (cur=head,prev=NULL;cur;prev=cur,cur=cur->next) {
       if (cur->buffer.allocated >= size)
 	break;
