@@ -8,7 +8,6 @@
 #define NEED_SQLITE
 #endif
 
-#ifdef NEED_KRB5
 #ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
@@ -21,7 +20,6 @@
 #define KRB5_PRINCIPAL_MIT_STYLE 1
 #else
 #error Cannot figure out how krb5_principal accessors work
-#endif
 #endif
 
 #ifdef NEED_KADM5
@@ -91,6 +89,7 @@ struct gss_OID_desc_struct;
 struct gss_buffer_desc_struct;
 struct sockaddr;
 struct mem_buffer;
+struct ACL;
 
 void child_cleanup(void) ;
 void ssl_startup(void);
@@ -113,6 +112,8 @@ int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
 int is_admin(const char *username); /* should be session, but then principal accessor functions would have to be generalized */
+struct ACL *acl_load(struct rekey_session *, char *);
+int acl_check(struct rekey_session *, struct ACL *, krb5_principal, int);
 
 void fatal(const char *, ...)
 #ifdef HAVE___ATTRIBUTE__
