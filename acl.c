@@ -172,12 +172,48 @@ static int pattern_match(krb5_context ctx, char *lrealm,
 #endif
 
 
+static struct ACL *parse_entry(struct rekey_session *sess,
+                               char *file, int line, char *str)
+{
+  struct ACL *entry;
+  char *x;
+  int rc;
+
+  while (isspace(*str)) str++;
+  if (!*str || *str == '#')
+    return NULL;
+
+  for (x = str + strlen(str) - 1; x > str && isspace(*x); x--)
+    *x = 0;
+  if (!strcmp(str, "!")) {
+    prtmsg("%s[%d]: Invalid empty negative ACL entry", file, line);
+    return NULL;
+  }
+
+  entry = malloc(sizeof(struct ACL));
+  if (!entry)
+    fatal("%s[%d]: Out of memory\n", file, line);
+  memset(entry, 0, sizeof(*entry));
+  if (*str == '!') {
+    entry->negative = 1;
+    str++;
+  }
+
+  if ((rc = krb5_parse_name(sess->kctx, str, &entry->pattern))) {
+    prtmsg("%s[%d]: %s", file, line, krb5_get_err_text(sess->kctx, rc));
+    free(entry);
+    return NULL;
+  }
+  return entry;
+}
+
+
 struct ACL *acl_load(struct rekey_session *sess, char *file)
 {
-  char buf[BUFSIZ], *x, *y;
+  char buf[BUFSIZ];
   struct ACL *acl = NULL, **next = &acl, *entry;
   FILE *F;
-  int rc, line = 0;
+  int line = 0;
 
   F = fopen(file, "r");
   if (!F)
@@ -185,37 +221,36 @@ struct ACL *acl_load(struct rekey_session *sess, char *file)
 
   while (fgets(buf, sizeof(buf), F)) {
     line++;
-    for (x = buf; isspace(*x); x++);
-    if (!*x || *x == '#') continue;
-    for (y = x + strlen(x) - 1; y > x && isspace(*y); y--)
-      *y = 0;
-    if (!strcmp(x, "!")) {
-      prtmsg("%s[%d]: Invalid empty negative ACL entry", file, line);
-      continue;
+    entry = parse_entry(sess, file, line, buf);
+    if (entry) {
+      *next = entry;
+      next = &entry->next;
     }
-
-    entry = malloc(sizeof(struct ACL));
-    if (!entry)
-      fatal("%s[%d]: Out of memory\n", file, line);
-    memset(entry, 0, sizeof(*entry));
-    if (*x == '!') {
-      entry->negative = 1;
-      x++;
-    }
-
-    if ((rc = krb5_parse_name(sess->kctx, x, &entry->pattern))) {
-      prtmsg("%s[%d]: %s", file, line, krb5_get_err_text(sess->kctx, rc));
-      free(entry);
-      continue;
-    }
-
-    *next = entry;
-    next = &entry->next;
   }
 
   if (ferror(F))
     fatal("%s: %s", file, strerror(errno));
   fclose(F);
+  return acl;
+}
+
+
+struct ACL *acl_load_builtin(struct rekey_session *sess,
+                             char *label, char **text)
+{
+  struct ACL *acl = NULL, **next = &acl, *entry;
+  int line = 0;
+
+  while (*text) {
+    line++;
+    entry = parse_entry(sess, label, line, *text);
+    if (entry) {
+      *next = entry;
+      next = &entry->next;
+    }
+    text++;
+  }
+
   return acl;
 }
 

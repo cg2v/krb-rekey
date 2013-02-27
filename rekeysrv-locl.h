@@ -113,6 +113,7 @@ int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
 int is_admin(const char *username); /* should be session, but then principal accessor functions would have to be generalized */
 struct ACL *acl_load(struct rekey_session *, char *);
+struct ACL *acl_load_builtin(struct rekey_session *, char *, char **);
 int acl_check(struct rekey_session *, struct ACL *, krb5_principal, int);
 
 void fatal(const char *, ...)
