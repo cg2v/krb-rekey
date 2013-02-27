@@ -165,9 +165,12 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
     keytab = ktdef;
   }
   
-  if (!strncmp(keytab, "FILE:", 5))
+  if (!strncmp(keytab, "FILE:", 5)) {
     keytab=&keytab[5];
+    goto is_file;
+  }
   if (!strchr(keytab, ':')) {
+is_file:
     ktname = malloc(8 + strlen(keytab));
     if (!ktname) {
       fatal("Memory allocation failed: %s", strerror(errno));
