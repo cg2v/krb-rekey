@@ -55,6 +55,7 @@
 #include <sys/signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <limits.h>
 
 #define SESS_PRIVATE
 #define NEED_KRB5
