@@ -1295,9 +1295,7 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (generate_keys(sess, princid, flags))
     goto freeall;
   
-  sess_send(sess, RESP_OK, NULL);
   dbaction=1;
-  no_send = 1;
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
@@ -1324,6 +1322,9 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
       sql_rollback_trans(sess);
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    } else {
+      if (no_send == 0)
+        sess_send(sess, RESP_OK, NULL);
     }
   } else if (dbaction < 0)
     sql_rollback_trans(sess);
@@ -1923,8 +1924,6 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (add_keys_one(sess, princid, buf))
     goto freeall;
   dbaction=1;
-  sess_send(sess, RESP_KEYS, buf);
-  no_send = 1;
   goto freeall;
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
@@ -1943,6 +1942,9 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
       sql_rollback_trans(sess);
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    } else {
+      if (no_send == 0)
+        sess_send(sess, RESP_KEYS, buf);
     }
   } else if (dbaction < 0)
     sql_rollback_trans(sess);
