@@ -88,11 +88,16 @@
 /* fetch the new keys this host is supposed to get */
 /* requires host authorization */
 #define OP_GETKEYS 6
-/* No data */
+/* optional data is a list of principals
+   4 bytes of principal count {
+     4 bytes of principal name length
+     N bytes of principal
+   }
+*/
 
 /* inform the server that a particular keyset has been
    written to a keytab */
-/* requires host authorization */
+/* requires host, admin, or target authorization */
 #define OP_COMMITKEY 7
 /* Data is principal name, kvno 
    4 bytes of principal name length
@@ -100,7 +105,7 @@
    4 bytes of kvno
 */
 /* rekey a non-shared principal */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_SIMPLEKEY 8
 /* data is principal name 
    4 bytes of principal name length
