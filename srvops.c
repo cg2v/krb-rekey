@@ -1958,17 +1958,50 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
 /* Process an ABORTREQ request. Deletes a request from the local database */
 static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
-  char *principal = NULL;
+  char *principal = NULL, *unp;
   sqlite_int64 princid;
-  int match;
+  int rc, match;
+  krb5_principal target=NULL;
 
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
-  }
   if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  rc=krb5_unparse_name(sess->kctx, target, &unp);
+  if (rc) {
+    prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  }
+  if (strcmp(unp, principal)) {
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+    krb5_xfree(unp);
+#else
+    krb5_free_unparsed_name(sess->kctx, unp);
+#endif
+    send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    prtmsg("Requested principal %s is not canonical", principal);
+    goto freeall;
+  }
+#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
+  krb5_xfree(unp);
+#else
+  krb5_free_unparsed_name(sess->kctx, unp);
+#endif
  
+  if (sess->is_admin == 0 &&
+      !krb5_principal_compare(sess->kctx,
+                              sess->princ,
+                              target)) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
+    prtmsg("Not authorized to abort");
+    goto freeall;
+  }
+
   prtmsg("Aborting in progress changes of %s", principal);
  
   if (sql_init(sess))
@@ -1990,9 +2023,14 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
   goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:  
+  if (target)
+    krb5_free_principal(sess->kctx, target);
   free(principal);
 }
 
@@ -2033,12 +2071,14 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
 #else
   krb5_free_unparsed_name(sess->kctx, unp);
 #endif
-
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
+  if (sess->is_admin == 0 &&
+      !krb5_principal_compare(sess->kctx,
+                              sess->princ,
+                              target)) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
+    prtmsg("Not authorized to finalize");
+    goto freeall;
   }
-
 
   prtmsg("Immediate commit/finalize of %s", principal);
 

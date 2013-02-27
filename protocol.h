@@ -113,7 +113,7 @@
    4 bytes of flags
 */
 /* abort an in-progress rekey */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_ABORTREQ 9
 /* data is principal name
   4 bytes of principal name length
@@ -122,7 +122,7 @@
 
 /* finalize (complete) an in-progress rekey */
 /* There must not be any hosts which have not yet commited */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_FINALIZE 10
 /* data is principal name
   4 bytes of principal name length
