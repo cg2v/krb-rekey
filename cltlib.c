@@ -244,8 +244,14 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
     for (i=0;i < cur; i++)
       if (!strcmp(name, princs[i]))
         break;
-    if (i < cur)
+    if (i < cur) {
+#if HAVE_DECL_KRB5_FREE_UNPARSED_NAME
+      krb5_free_unparsed_name(ctx, name);
+#else
+      krb5_xfree(name);
+#endif
       continue;
+    }
     if (i >= alloc) {
       alloc+=5;
       new=realloc(princs, alloc * sizeof(char *));
@@ -736,7 +742,7 @@ static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
       } 
       if (krb5_enctype_valid(ctx, et) != ENCTYPE_VALID && et != 2) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
-	return 1;
+	goto out;
       }
       buf->cursor+=l;
       continue;

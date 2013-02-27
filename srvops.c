@@ -1785,7 +1785,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     if (allowed == 0) {
       send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator, an allowed host, or the target)");
       prtmsg("Not authorized to commitkey");
-      return;
+      no_send = 1;
+      goto freeall;
     }
   }
 
