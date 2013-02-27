@@ -396,11 +396,11 @@ void c_auth(SSL *ssl, char *hostname) {
  memset(&out, 0, sizeof(out));
  reqmech.length = gss_mech_krb5->length;
  reqmech.elements = malloc(reqmech.length);
- memcpy(reqmech.elements, gss_mech_krb5->elements, reqmech.length);
  if (!reqmech.elements) {
    c_close(ssl);
    fatal("Cannot allocate memory");
  }   
+ memcpy(reqmech.elements, gss_mech_krb5->elements, reqmech.length);
  do {
    /* can't use GSS_C_NO_OID with GSS_C_NO_CREDENTIAL on solaris */
    /* Should be using gss_indicate_mechs and iterating, but
