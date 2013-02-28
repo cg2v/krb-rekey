@@ -371,7 +371,7 @@ int sendrcv(SSL *ssl, int opcode, mb_t data) {
   return ret;
 }
 
-void c_auth(SSL *ssl, char *hostname) {
+void c_auth(SSL *ssl, char *hostname, char *svcname) {
  unsigned char *p;
      
  OM_uint32 maj, min, rflag;
@@ -388,13 +388,21 @@ void c_auth(SSL *ssl, char *hostname) {
      
  char namebuf[256];
      
- memset(namebuf, 0, 256);
- snprintf(namebuf, 255, "host@%s", hostname);
-     
- inname.value=namebuf;
- inname.length=strlen(namebuf);
-     
- maj = gss_import_name(&min, &inname, GSS_C_NT_HOSTBASED_SERVICE, &n);
+ if (svcname) {
+   inname.value=svcname;
+   inname.length=strlen(svcname);
+
+   maj = gss_import_name(&min, &inname, GSS_KRB5_NT_PRINCIPAL_NAME, &n);
+
+ } else {
+   memset(namebuf, 0, 256);
+   snprintf(namebuf, 255, "host@%s", hostname);
+
+   inname.value=namebuf;
+   inname.length=strlen(namebuf);
+
+   maj = gss_import_name(&min, &inname, GSS_C_NT_HOSTBASED_SERVICE, &n);
+ }
      
  if (GSS_ERROR(maj)) {
    prt_gss_error(GSS_C_NO_OID, maj, min);

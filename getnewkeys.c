@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
   SSL *conn;
   char *realm=NULL;
   char *servername=NULL;
+  char *princname=NULL;
   char *keytab=NULL;
   int optch;
   int allkeys=0;
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
   int ntargets=0;
   
   
-  while ((optch = getopt(argc, argv, "k:r:s:ap:")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:ap:")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -84,6 +85,9 @@ int main(int argc, char **argv) {
     case 's':
       servername = optarg;
       break;
+    case 'P':
+      princname = optarg;
+      break;
     case 'a':
       allkeys=1;
       break;
@@ -91,7 +95,7 @@ int main(int argc, char **argv) {
       target = optarg;
       break;
     case '?':
-      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname]\n [-a] [-p principalname]");
+      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]");
       exit(1);
     }
   }
@@ -109,7 +113,7 @@ int main(int argc, char **argv) {
   if (!servername)
     servername = get_server(realm);
   conn = c_connect(servername);
-  c_auth(conn, servername);
+  c_auth(conn, servername, princname);
 #if 0
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);

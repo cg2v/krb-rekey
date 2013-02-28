@@ -64,13 +64,14 @@ int main(int argc, char **argv) {
   char *realm=NULL;
   char *targetname=NULL;
   char *servername=NULL;
+  char *princname=NULL;
   char *keytab=NULL;
   char *cmd;
   char **hostnames;
   int flag=0;
   int optch;
   
-  while ((optch = getopt(argc, argv, "k:r:s:dDA")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:dDA")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -80,6 +81,9 @@ int main(int argc, char **argv) {
       break;
     case 's':
       servername = optarg;
+      break;
+    case 'P':
+      princname = optarg;
       break;
     case 'd':
       flag|=REQFLAG_DESONLY;
@@ -99,7 +103,7 @@ int main(int argc, char **argv) {
   if (argc - optind < 1) {
     
   usage:
-    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-d] command [args]\n");
+    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d] command [args]\n");
     fprintf(stderr, "       rekeyclt start principalname hostname [hostname]...\n");
     fprintf(stderr, "       rekeyclt status principalname\n");
     fprintf(stderr, "       rekeyclt abort principalname\n");
@@ -117,7 +121,7 @@ int main(int argc, char **argv) {
   if (!servername)
     servername = get_server(realm);
   conn = c_connect(servername);
-  c_auth(conn, servername);
+  c_auth(conn, servername, princname);
 #if 0
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);

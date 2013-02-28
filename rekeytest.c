@@ -63,10 +63,11 @@ int main(int argc, char **argv) {
   SSL *conn;
   char *keytab = "tmp.keytab";
   char *servername = "rekey.andrew.cmu.edu";
+  char *princname = NULL;
   int optch;
   int flag=0;
 
-  while ((optch = getopt(argc, argv, "k:s:d")) != -1) {
+  while ((optch = getopt(argc, argv, "k:s:P:d")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -74,11 +75,14 @@ int main(int argc, char **argv) {
     case 's':
       servername = optarg;
       break;
+    case 'P':
+      princname = optarg;
+      break;
     case 'd':
       flag|=REQFLAG_DESONLY;
       break;
     case '?':
-      fprintf(stderr, "Usage: rekeytest [-k keytab] [-r realm] [-s servername] [-d] [princ [hostname...] \n");
+      fprintf(stderr, "Usage: rekeytest [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d] [princ [hostname...] \n");
       exit(1);
     }
   }
@@ -88,7 +92,7 @@ int main(int argc, char **argv) {
   conn=c_connect(servername);
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
-  c_auth(conn, servername);
+  c_auth(conn, servername, princname);
   if (argc > 2)
     c_newreq(conn, argv[1], flag, argc - 2, argv + 2);
   else if (argc == 2)
