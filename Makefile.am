@@ -25,6 +25,7 @@ sqlinit.h: $(srcdir)/sqlembed.pl $(srcdir)/rekey.sql
 	perl $(srcdir)/sqlembed.pl < $(srcdir)/rekey.sql > $@
 SUBDIRS=lib
 ACLOCAL_AMFLAGS=-I m4
-AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib $(KRB_INC_FLAGS)
+AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib $(KRB_INC_FLAGS) \
+              -DSYSCONFDIR='"$(sysconfdir)"'
 LDADD = lib/libgnu.a
 

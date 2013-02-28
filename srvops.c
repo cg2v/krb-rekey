@@ -180,114 +180,40 @@ static void check_authz(struct rekey_session *sess)
 
 static int check_target(struct rekey_session *sess, krb5_principal target) 
 {
-  int ret=1;
-  size_t rl;
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm;
-  const char  *c1, *c2;
-#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-  krb5_data *princ_realm;
-  krb5_data *c1, *c2;
-#endif
-
   if (krealm_init(sess))
-    return ret;
-  rl = strlen(sess->realm);
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-
-  princ_realm = krb5_principal_get_realm(sess->kctx, target); 
-  if (!princ_realm || rl != strlen(princ_realm) ||
-      strncmp(princ_realm , sess->realm, rl)) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
-    goto out;
-  }
-  c1 = krb5_principal_get_comp_string(sess->kctx, target, 0);
-  c2 = krb5_principal_get_comp_string(sess->kctx, target, 1);
-#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
-
-  princ_realm = krb5_princ_realm(sess->kctx, target); 
-  if (!princ_realm || rl != princ_realm->length ||
-      strncmp(princ_realm->data , sess->realm, rl)) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
-    goto out;
-  }
-  if (krb5_princ_size(sess->kctx, target) < 1)
-    goto out;
-  c1 = krb5_princ_component(sess->kctx, target, 0);
-  if (krb5_princ_size(sess->kctx, target) >= 2)
-    c2 = krb5_princ_component(sess->kctx, target, 1);
-  else
-    c2 = NULL;
-#endif
-#ifdef LIMIT_TARGET
-  if (!compare_princ_comp(c1, LIMIT_TARGET)) {
+    return 1;
+  if (!acl_check(sess, sess->target_acl, target, 0)) {
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
+    return 1;
   }
-#else
-  /* default principal exclusions: kadmin, local tgt, master key verifier, 
-     single component that isn't afs@ (i.e. users). */
-  if (!c1) {
-  badprinc:
-    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
-  }
-  if (princ_ncomp_eq(sess->kctx, target, 1)  && !compare_princ_comp(c1, "afs"))
-    goto badprinc;
-
-  if (compare_princ_comp(c1, "kadmin"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2)) {
-    /* should never happen, but this should silence static analyzers */
-    if (c2 == NULL)
-      goto badprinc;
-    if (compare_princ_comp(c1, "krbtgt")) {
-      char *rs=dup_comp_string(princ_realm);
-      if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
-	goto badprinc;
-      free(rs);
-    }
-    if (compare_princ_comp(c1, "K") && compare_princ_comp(c2, "M"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "root"))
-      goto badprinc;
-    /* idm/admin is a password. adm/admin will have to be done manually */
-    if (compare_princ_comp(c2, "admin"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "gatekeeper"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "ldap"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "admin-afs"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "cyradm"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "daemon"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "ftp"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "mail"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "misc"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "remote"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "z"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "jabber"))
-      goto badprinc;
-    /* user/zephyr bad, zephyr/zephyr ok */
-    if (!compare_princ_comp(c1, "zephyr") && 
-	compare_princ_comp(c2, "zephyr"))
-      goto badprinc;
-    /* end two component */
-  }
-#endif
-  ret=0;
-  
- out:
-  return ret;
+  return 0;
 }
+
+/* This is the default target ACL, used if no rekey.targets file exists */
+static char *builtin_target_acl[] = {
+  "afs",
+  "!*",
+  "!kadmin/**",
+  "!krbtgt/**",
+  "!K/M",
+  "!*/root",
+  "!*/admin",
+  "!*/gatekeeper",
+  "!*/ldap",
+  "!*/admin-afs",
+  "!*/cyradm",
+  "!*/daemon",
+  "!*/ftp",
+  "!*/mail",
+  "!*/misc",
+  "!*/remote",
+  "!*/z",
+  "!*/jabber",
+  "zephyr/zephyr",
+  "!*/zephyr",
+  "*/**",
+  NULL
+};
 
 /* lookup a principal in the local database, and return its id and kvno if
    requested */
@@ -909,11 +835,6 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
     send_error(sess, ERR_BADOP, "Authentication already complete");
     return;
   }
-  if (krb5_init_context(&sess->kctx)) {
-      
-      send_fatal(sess, ERR_OTHER, "Internal kerberos error on server");
-      fatal("Authentication failed: krb5_init_context failed");
-  }  
   reset_cursor(buf);
   if (buf_getint(buf, &f))
     goto badpkt;
@@ -2239,6 +2160,17 @@ void run_session(int s) {
   }
   sess.ssl = do_ssl_accept(s);
   child_cleanup();
+
+  if (krb5_init_context(&sess.kctx))
+    fatal("krb5_init_context failed");
+  if (target_acl_path)
+    sess.target_acl = acl_load(&sess, target_acl_path);
+  else if (!access(REKEY_TARGET_ACL, F_OK))
+    sess.target_acl = acl_load(&sess, REKEY_TARGET_ACL);
+  else
+    sess.target_acl = acl_load_builtin(&sess, "<builtin target ACL>",
+                                       builtin_target_acl);
+
   sess.initialized=1;
   sess.state = REKEY_SESSION_LISTENING;
   for (;;) {

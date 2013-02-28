@@ -57,6 +57,8 @@
 
 #include "rekeysrv-locl.h"
 
+char *target_acl_path = NULL;
+
 void run_fg(int s, struct sockaddr *sa) {
   char addrstr[INET6_ADDRSTRLEN];
   if (sa->sa_family == AF_INET) {
@@ -106,7 +108,7 @@ int main(int argc, char **argv) {
   int dofork=0;
   int inetd=0;
   int optch;
-  while ((optch=getopt(argc, argv, "idp:")) != -1) {
+  while ((optch=getopt(argc, argv, "idp:T:")) != -1) {
     switch (optch) {
     case 'd':
       dofork=1;
@@ -117,6 +119,9 @@ int main(int argc, char **argv) {
     case 'p':
       pidfile=optarg;
       break;
+    case 'T':
+      target_acl_path=optarg;
+      break;
     case '?':
       optind=0;
       break;
@@ -126,7 +131,12 @@ int main(int argc, char **argv) {
   }
   
   if (argc > optind) {
-    fprintf(stderr, "Usage: rekeysrv [-i] | [[-d] [-p pidfile path]]\n");
+    fprintf(stderr, "Usage: rekeysrv -i [-T targets]...\n");
+    fprintf(stderr, "       rekeysrv [-d] [-p pidfile] [-T targets]\n");
+    fprintf(stderr, "  -i       run under inetd\n");
+    fprintf(stderr, "  -d       run as a background daemon\n");
+    fprintf(stderr, "  -p file  PID file\n");
+    fprintf(stderr, "  -T file  ACL file listing permitted targets\n");
     exit(1);
   }
   if (inetd && (dofork || pidfile)) {

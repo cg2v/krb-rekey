@@ -63,6 +63,7 @@ struct rekey_session {
   int state;
   SSL *ssl;
   krb5_context kctx;
+  struct ACL *target_acl;
   gss_ctx_id_t gctx;
   gss_OID mech;
   gss_name_t name;
@@ -83,6 +84,7 @@ struct rekey_session {
 struct rekey_session;
 #endif
 
+#define REKEY_TARGET_ACL SYSCONFDIR "/rekey.targets"
 #define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
 
 struct gss_OID_desc_struct;
@@ -90,6 +92,8 @@ struct gss_buffer_desc_struct;
 struct sockaddr;
 struct mem_buffer;
 struct ACL;
+
+extern char *target_acl_path;
 
 void child_cleanup(void) ;
 void ssl_startup(void);
