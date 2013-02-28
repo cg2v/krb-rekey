@@ -89,6 +89,7 @@ struct rekey_session {
   sqlite3 *dbh;
   char *realm;
   void *kadm_handle;
+  void *admin_data;
 };
 #define REKEY_SESSION_LISTENING 0
 #define REKEY_SESSION_SENDING 1

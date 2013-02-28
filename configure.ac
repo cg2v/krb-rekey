@@ -31,6 +31,10 @@ AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
               [use kadmin client mode]),
               [use_kadm5_client=$enableval],
               [use_kadm5_client=no])
+AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=\[file|ldapgroups\]],
+            [select admin access control method]),
+            [ADMIN_METHOD=$withval],[ADMIN_METHOD=file])
+
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then
    AC_MSG_ERROR([krb5-config not found. update path or set KRB5CONF before running configure])
@@ -67,11 +71,16 @@ if test "$build_server" = "yes"; then
 
 AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
 AC_MSG_ERROR([No sqlite library found])])
-AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
-AC_MSG_ERROR([No ldap groups library found])])
+
+if test "x$ADMIN_METHOD" = "xldapgroups" ; then
+  AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
+                AC_MSG_ERROR([No ldap groups library found])])
+fi
+
 AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
 fi
 
+AC_SUBST([ADMIN_METHOD])
 AC_SUBST([LIB_KADMS])
 AC_SUBST([LIB_SQLITE3])
 AC_SUBST([LIB_GROUPS])
