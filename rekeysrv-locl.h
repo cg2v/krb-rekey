@@ -94,6 +94,7 @@ struct mem_buffer;
 struct ACL;
 
 extern char *target_acl_path;
+extern int force_compat_enctype;
 
 void child_cleanup(void) ;
 void ssl_startup(void);

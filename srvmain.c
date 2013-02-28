@@ -58,6 +58,7 @@
 #include "rekeysrv-locl.h"
 
 char *target_acl_path = NULL;
+int force_compat_enctype = 0;
 
 void run_fg(int s, struct sockaddr *sa) {
   char addrstr[INET6_ADDRSTRLEN];
@@ -108,8 +109,11 @@ int main(int argc, char **argv) {
   int dofork=0;
   int inetd=0;
   int optch;
-  while ((optch=getopt(argc, argv, "idp:T:")) != -1) {
+  while ((optch=getopt(argc, argv, "cdip:T:")) != -1) {
     switch (optch) {
+    case 'c':
+      force_compat_enctype=1;
+      break;
     case 'd':
       dofork=1;
       break;
@@ -137,6 +141,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "  -d       run as a background daemon\n");
     fprintf(stderr, "  -p file  PID file\n");
     fprintf(stderr, "  -T file  ACL file listing permitted targets\n");
+    fprintf(stderr, "  -c       force old enctype compatibility\n");
     exit(1);
   }
   if (inetd && (dofork || pidfile)) {
