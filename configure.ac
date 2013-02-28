@@ -27,6 +27,10 @@ AC_FUNC_SETPGRP
 # Checks for libraries.
 AC_ARG_ENABLE(server, AS_HELP_STRING([--enable-server], [build server component (default is no)]),
 	[build_server=$enableval], [build_server=no])
+AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
+              [use kadmin client mode]),
+              [use_kadm5_client=$enableval],
+              [use_kadm5_client=no])
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then
    AC_MSG_ERROR([krb5-config not found. update path or set KRB5CONF before running configure])
@@ -55,7 +59,12 @@ LIB_GROUPS=
 LIB_KADMS=
 
 if test "$build_server" = "yes"; then
-LIB_KADMS=`$KRB5CONF --libs kadm-server`
+  if test "$use_kadm5_client" = "yes"; then
+    LIB_KADMS=`$KRB5CONF --libs kadm-client`
+  else
+    LIB_KADMS=`$KRB5CONF --libs kadm-server`
+  fi
+
 AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
 AC_MSG_ERROR([No sqlite library found])])
 AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
