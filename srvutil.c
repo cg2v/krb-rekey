@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -240,6 +241,44 @@ void send_gss_token(struct rekey_session *sess, int opcode,
   sess_send(sess, RESP_AUTH, auth);
   buf_free(auth);
 }
+
+
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
+
+int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val)
+{
+  const char *s;
+  if (val <=0)
+    return 0;
+  if (!(s=krb5_principal_get_comp_string(context, princ, val-1)) ||
+      (strlen(s) == 0))
+    return 0;
+  if ((s=krb5_principal_get_comp_string(context, princ, val)) &&
+      (strlen(s) > 0))
+    return 0;
+  return 1;
+}
+
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
+
+int compare_princ_comp(krb5_context context, krb5_principal princ, int n,
+                       char *ts)
+{
+  krb5_data *obj = krb5_princ_component(context, princ, n);
+  return obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length);
+}
+
+char *dup_comp_string(krb5_context context, krb5_principal princ, int n)
+{
+  krb5_data *obj = krb5_princ_component(context, princ, n);
+  char *ret;
+  ret=malloc(obj->length+1);
+  memcpy(ret, obj->data, obj->length);
+  ret[obj->length]=0;
+  return ret;
+}
+
+#endif
 
 int krealm_init(struct rekey_session *sess) {
   int rc;

@@ -88,42 +88,15 @@ static krb5_enctype enctypes[] = {
 };
 
 
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-static int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val) {
-  const char *s;
-  if (val <=0)
-    return 0;
-  if (!(s=krb5_principal_get_comp_string(context, princ, val-1)) ||
-      (strlen(s) == 0))
-    return 0;
-  if ((s=krb5_principal_get_comp_string(context, princ, val)) &&
-      (strlen(s) > 0))
-    return 0;
-  return 1;
-}
-#define compare_princ_comp(obj, ts) (strlen(obj) == strlen(ts) && !strcmp(obj, ts))
-#define dup_comp_string(obj) strdup(obj)
-#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-#define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
-#define compare_princ_comp(obj, ts) (obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length))
-static char *dup_comp_string(krb5_data *obj) {
-  char *ret;
-  ret=malloc(obj->length+1);
-  memcpy(ret, obj->data, obj->length);
-  ret[obj->length]=0;
-  return ret;
-}
-#endif    
-
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {
   size_t rl;
   char *username;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm, *c1, *c2;
+  const char  *princ_realm;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-  krb5_data *princ_realm, *c1, *c2;
+  krb5_data *princ_realm;
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
@@ -136,8 +109,6 @@ static void check_authz(struct rekey_session *sess)
   if (!princ_realm || rl != strlen(princ_realm) ||
       strncmp(princ_realm , sess->realm, rl))
     return;
-  c1 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 0);
-  c2 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 1);
 
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   
@@ -147,26 +118,23 @@ static void check_authz(struct rekey_session *sess)
     return;
   if (krb5_princ_size(sess->kctx, sess->princ) != 2)
     return;
-  c1 = krb5_princ_component(sess->kctx, sess->princ, 0);
-  c2 = krb5_princ_component(sess->kctx, sess->princ, 1);
 #endif
   
   if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
-      compare_princ_comp(c1, "host")) {
+      compare_princ_comp(sess->kctx, sess->princ, 0, "host")) {
     sess->is_host = 1;
-    sess->hostname=dup_comp_string(c2);
+    sess->hostname=dup_comp_string(sess->kctx, sess->princ, 1);
     if (!sess->hostname) /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
     return;
   }
   
   /* a better interface would be to pass the whole session object to 
-     is_admin, but that would involve refactoring the principal accessor
-     stuff into exported functions so is_admin could use them */
+     is_admin */
 
   if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
-      compare_princ_comp(c2, "admin")) {
-    username=dup_comp_string(c1);
+      compare_princ_comp(sess->kctx, sess->princ, 1, "admin")) {
+    username=dup_comp_string(sess->kctx, sess->princ, 0);
     if (is_admin(username))
       sess->is_admin = 1;
     free(username);
@@ -1143,21 +1111,13 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     no_send = 1;
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
   if (buf_getint(buf, &flags))
     goto badpkt;
@@ -1562,20 +1522,12 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
 
   if (buf_getint(buf, &lkvno))
@@ -1791,20 +1743,12 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx, 
 			      sess->princ,
@@ -1902,20 +1846,12 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
     goto interr;
   }
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
  
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx,
@@ -1981,20 +1917,12 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx,
                               sess->princ,
@@ -2077,20 +2005,12 @@ static void s_delprinc(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
   prtmsg("Delete principal %s", principal);
 

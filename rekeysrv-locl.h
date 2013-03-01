@@ -14,10 +14,23 @@
 #include <krb5/krb5.h>
 #endif
 #include "krb5_portability.h"
+
 #if defined(HAVE_DECL_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_DECL_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
+#define free_unparsed_name(c,n) krb5_xfree(n)
+extern int princ_ncomp_eq(krb5_context, krb5_principal, int);
+#define compare_princ_comp(c,p,n,s) \
+  (!strcmp(krb5_principal_get_comp_string(c,p,n), s))
+#define dup_comp_string(c,p,n) \
+  (strdup(krb5_principal_get_comp_string(c,p,n)))
+
 #elif defined (HAVE_KRB5_PRINC_REALM) && defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_MIT_STYLE 1
+#define free_unparsed_name(c,n) krb5_free_unparsed_name(c,n)
+#define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
+extern int compare_princ_comp(krb5_context, krb5_principal, int, char *);
+extern char *dup_comp_string(krb5_context, krb5_principal, int);
+
 #else
 #error Cannot figure out how krb5_principal accessors work
 #endif
