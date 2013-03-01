@@ -85,7 +85,6 @@ void process_entry(krb5_context ctx, krb5_keytab_entry *entry,
 int enumerate_keytab(krb5_context ctx, krb5_keytab keytab, 
 		     principal **princ_list) {
 
-  krb5_error_code rc;
   krb5_keytab_entry entry;
   krb5_kt_cursor kt_c;
 
