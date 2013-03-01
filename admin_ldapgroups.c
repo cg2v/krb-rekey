@@ -1,16 +1,34 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include <stdarg.h>
 #include <groups.h>
+
+#define SESS_PRIVATE
+#define NEED_KRB5
 #include "rekeysrv-locl.h"
 #define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu"
 
-int is_admin(const char *username) 
+int is_admin(struct rekey_session *sess)
 {
-  GROUPS *g;
+  char *username=NULL;
+  GROUPS *g=NULL;
   int rc, ret=0;
-  
+
+  if (!princ_ncomp_eq(sess->kctx, sess->princ, 2) ||
+      !compare_princ_comp(sess->kctx, sess->princ, 1, "admin")) {
+    goto freeall;
+  }
+
+  if (!(username=dup_comp_string(sess->kctx, sess->princ, 0))) {
+    prtmsg("Failed to extract username for admin check");
+    goto freeall;
+  }
+
   g = groups_init();
   if (!g) {
     prtmsg("Cannot initialize groups library");
-    return 0;
+    goto freeall;
   }
 #ifdef GROUPS_FLAG_TLS
   if (groups_config(g, GROUPS_FLAG_TLS, NULL) ||
@@ -44,6 +62,7 @@ int is_admin(const char *username)
   else
     ret = (rc > 0);
  freeall:
-  groups_destroy(g);
+  if (g) groups_destroy(g);
+  free(username);
   return ret;
 }

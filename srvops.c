@@ -92,7 +92,6 @@ static krb5_enctype enctypes[] = {
 static void check_authz(struct rekey_session *sess) 
 {
   size_t rl;
-  char *username;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
@@ -129,16 +128,8 @@ static void check_authz(struct rekey_session *sess)
     return;
   }
   
-  /* a better interface would be to pass the whole session object to 
-     is_admin */
-
-  if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
-      compare_princ_comp(sess->kctx, sess->princ, 1, "admin")) {
-    username=dup_comp_string(sess->kctx, sess->princ, 0);
-    if (is_admin(username))
-      sess->is_admin = 1;
-    free(username);
-  }
+  if (is_admin(sess))
+    sess->is_admin = 1;
 }
 
 
