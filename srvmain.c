@@ -110,8 +110,11 @@ int main(int argc, char **argv) {
   int dofork=0;
   int inetd=0;
   int optch;
-  while ((optch=getopt(argc, argv, "cdip:T:")) != -1) {
+  while ((optch=getopt(argc, argv, "a:cdip:T:")) != -1) {
     switch (optch) {
+    case 'a':
+      admin_arg(optarg);
+      break;
     case 'c':
       force_compat_enctype=1;
       break;
@@ -143,6 +146,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "  -p file  PID file\n");
     fprintf(stderr, "  -T file  ACL file listing permitted targets\n");
     fprintf(stderr, "  -c       force old enctype compatibility\n");
+    fprintf(stderr, "  -a       %s\n", admin_help_string);
     exit(1);
   }
   if (inetd && (dofork || pidfile)) {

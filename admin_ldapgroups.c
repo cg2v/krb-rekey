@@ -9,6 +9,14 @@
 #include "rekeysrv-locl.h"
 #define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu"
 
+static char *rekey_admin_group=REKEY_ADMIN_GROUP;
+char *admin_help_string = "admin LDAP group";
+
+void admin_arg(char *arg)
+{
+  rekey_admin_group = arg;
+}
+
 int is_admin(struct rekey_session *sess)
 {
   char *username=NULL;
@@ -53,7 +61,7 @@ int is_admin(struct rekey_session *sess)
   }
 #endif
   
-  rc = groups_anyuser_in(g, username, REKEY_ADMIN_GROUP, "owner",
+  rc = groups_anyuser_in(g, username, rekey_admin_group, "owner",
                          GROUPS_ANYUSER_ANDREW | GROUPS_ANYUSER_TRYAUTHENT |
                          GROUPS_ANYUSER_NOPTS);
   

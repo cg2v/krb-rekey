@@ -106,6 +106,7 @@ struct sockaddr;
 struct mem_buffer;
 struct ACL;
 
+extern char *admin_help_string;
 extern char *target_acl_path;
 extern int force_compat_enctype;
 
@@ -129,6 +130,7 @@ int sql_commit_trans(struct rekey_session *);
 int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
+void admin_arg(char *);
 int is_admin(struct rekey_session *);
 struct ACL *acl_load(struct rekey_session *, char *);
 struct ACL *acl_load_builtin(struct rekey_session *, char *, char **);
