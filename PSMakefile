@@ -1,0 +1,23 @@
+# PSMakefile for rekey
+# If you are looking for a starting point, please don't grab a PSMakefile
+# from a random collection.  Instead, see the samples directory in
+# /afs/cs.cmu.edu/misc/tools/src/samples
+#
+# This file describes (to psmake) what needs to be done to correctly build
+# the software package.  It's really nothing more than a chunk of Perl5
+# code that gets run at the right time.  For more information on how psmake
+# works, read the comments at the top of /usr/local/bin/psmake
+
+use PSMake 2.0;
+
+PSMake::setup(1);
+if ($::SysName =~ /_f/) {
+  # Ugh; configure will find /usr/include/gssapi/gssapi.h and decide
+  # that's the GSS-API we're using, which is totally wrong.
+  $ENV{ac_cv_header_gssapi_gssapi_h} = 'no';
+  $ENV{ac_cv_header_gssapi_gssapi_krb5_h} = 'no';
+}
+PSMake::setup_autoconf();
+PSMake::setup_install();
+
+# vim:set ft=perl sw=2 et:
