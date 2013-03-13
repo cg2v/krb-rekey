@@ -110,6 +110,7 @@ struct ACL;
 extern char *admin_help_string;
 extern char *target_acl_path;
 extern int force_compat_enctype;
+extern krb5_enctype *cfg_enctypes;
 
 void child_cleanup(void) ;
 void ssl_startup(void);

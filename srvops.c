@@ -72,7 +72,7 @@
 #include <gssapi/gssapi_krb5.h>
 #endif
 
-static krb5_enctype enctypes[] = {
+static krb5_enctype std_enctypes[] = {
   ENCTYPE_DES_CBC_CRC,
   ENCTYPE_DES3_CBC_SHA1,
 #if HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96
@@ -86,6 +86,7 @@ static krb5_enctype enctypes[] = {
 #endif
   ENCTYPE_NULL
 };
+krb5_enctype *cfg_enctypes = std_enctypes;
 
 
 /* parse the client's name and determine what operations they can perform */
@@ -375,7 +376,11 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
   krb5_error_code kc;
   sqlite3_stmt *ins=NULL;
   int rc;
-  pEtype=enctypes;
+
+  if (reqflags & REQFLAG_DESONLY)
+    pEtype=std_enctypes;
+  else
+    pEtype=cfg_enctypes;
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
 			  -1, &ins, NULL);
