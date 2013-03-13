@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
       target = optarg;
       break;
     case '?':
-      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]");
+      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]\n");
       exit(1);
     }
   }
