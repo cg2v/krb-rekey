@@ -504,6 +504,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
 static int prepare_kadm_key(krb5_key_data *k, krb5_kvno kvno, int enctype, int keylen,
 		   const unsigned char *keydata) {
+  memset(k, 0, sizeof(*k));
   k->key_data_ver = 1;
   k->key_data_kvno = kvno;
   k->key_data_type[0]=enctype;
