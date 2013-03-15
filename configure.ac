@@ -32,7 +32,7 @@ AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
               [use kadmin client mode]),
               [use_kadm5_client=$enableval],
               [use_kadm5_client=no])
-AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=\[file|ldapgroups\]],
+AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=@<:@file|ldapgroups@:>@],
             [select admin access control method]),
             [ADMIN_METHOD=$withval],[ADMIN_METHOD=file])
 AC_ARG_WITH(default-service-principal,
