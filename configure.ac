@@ -35,6 +35,12 @@ AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
 AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=\[file|ldapgroups\]],
             [select admin access control method]),
             [ADMIN_METHOD=$withval],[ADMIN_METHOD=file])
+AC_ARG_WITH(default-service-principal,
+            AS_HELP_STRING([--with-default-service-principal=princ],
+                           [default Kerberos principal for server]),
+            [AC_DEFINE_UNQUOTED([REKEY_DEF_SERVICE], ["$withval"])],
+            [AC_DEFINE([REKEY_DEF_SERVICE], [NULL],
+                       [Default rekey server Kerberos principal])])
 
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then

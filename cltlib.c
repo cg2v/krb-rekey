@@ -389,7 +389,7 @@ void c_auth(SSL *ssl, char *hostname, char *svcname) {
      
  char namebuf[256];
      
- if (svcname) {
+ if (svcname && *svcname && strcmp(svcname, "-")) {
    inname.value=svcname;
    inname.length=strlen(svcname);
 

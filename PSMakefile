@@ -17,7 +17,9 @@ if ($::SysName =~ /_f/) {
   $ENV{ac_cv_header_gssapi_gssapi_h} = 'no';
   $ENV{ac_cv_header_gssapi_gssapi_krb5_h} = 'no';
 }
-PSMake::setup_autoconf();
+PSMake::setup_autoconf(
+  '--with-default-service-principal=rekey/daemon@CS.CMU.EDU',
+);
 PSMake::setup_install();
 
 # vim:set ft=perl sw=2 et:

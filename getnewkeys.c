@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
   SSL *conn;
   char *realm=NULL;
   char *servername=NULL;
-  char *princname=NULL;
+  char *princname=REKEY_DEF_SERVICE;
   char *keytab=NULL;
   int optch;
   int allkeys=0;

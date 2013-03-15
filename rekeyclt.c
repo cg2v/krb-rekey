@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
   char *realm=NULL;
   char *targetname=NULL;
   char *servername=NULL;
-  char *princname=NULL;
+  char *princname=REKEY_DEF_SERVICE;
   char *keytab=NULL;
   char *cmd;
   char **hostnames;

@@ -7,6 +7,7 @@ $Make = $ENV{MAKE} = 'gmake';
   --prefix=/usr/local
   --sysconfdir=/etc
   --localstatedir=/var
+  --with-default-service-principal=rekey/daemon@CS.CMU.EDU
 );
 
 if ($SysName eq 'sun4x_59') {

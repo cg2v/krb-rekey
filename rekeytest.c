@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
   SSL *conn;
   char *keytab = "tmp.keytab";
   char *servername = "rekey.andrew.cmu.edu";
-  char *princname = NULL;
+  char *princname = REKEY_DEF_SERVICE;
   int optch;
   int flag=0;
 
