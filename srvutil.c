@@ -360,6 +360,13 @@ int sql_init(struct rekey_session *sess)
     return 1;
   }
 #endif
+
+  rc = sqlite3_busy_timeout(dbh, 30000);
+  if (rc != SQLITE_OK) {
+    prtmsg("Failed setting database busy handler: %d", rc);
+    sqlite3_close(dbh);
+    return 1;
+  }
     
 #if SQLITE_VERSION_NUMBER >= 3003007 /* need support for CREATE TRIGGER IF NOT EXIST */
   for (sql=sql_embeded_init[i=0]; sql;sql=sql_embeded_init[++i]) {
