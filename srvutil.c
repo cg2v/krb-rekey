@@ -48,7 +48,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/syslog.h>
 #include <netdb.h>
@@ -329,21 +331,35 @@ int kadm_init(struct rekey_session *sess)
 int sql_init(struct rekey_session *sess) 
 {
   sqlite3 *dbh;
-  int rc, i;
+  int dblock, rc, i;
   char *sql, *errmsg;
 
   if (sess->dbh)
     return 0;
   
+  dblock = open(REKEY_DATABASE_LOCK, O_WRONLY | O_CREAT, 0644);
+  if (dblock < 0) {
+    prtmsg("Cannot create/open database lock: %s", strerror(errno));
+    return 1;
+  }
+
+  if (flock(dblock, LOCK_EX)) {
+    prtmsg("Cannot obtain database lock: %s", strerror(errno));
+    close(dblock);
+    return 1;
+  }
+
 #if SQLITE_VERSION_NUMBER >= 3005000
   rc = sqlite3_open_v2(REKEY_LOCAL_DATABASE, &dbh, SQLITE_OPEN_READWRITE, NULL);
   if (rc == SQLITE_OK) {
+    sess->db_lock = dblock;
     sess->dbh = dbh;
     return 0;
   }
   
   if (rc != SQLITE_ERROR && rc != SQLITE_CANTOPEN) {
     prtmsg("Cannot open database: %d", rc);
+    close(dblock);
     return 1;
   }
 
@@ -351,12 +367,14 @@ int sql_init(struct rekey_session *sess)
                        SQLITE_OPEN_CREATE, NULL);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
+    close(dblock);
     return 1;
   }
 #else
   rc = sqlite3_open(REKEY_LOCAL_DATABASE, &dbh);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
+    close(dblock);
     return 1;
   }
 #endif
@@ -365,6 +383,7 @@ int sql_init(struct rekey_session *sess)
   if (rc != SQLITE_OK) {
     prtmsg("Failed setting database busy handler: %d", rc);
     sqlite3_close(dbh);
+    close(dblock);
     return 1;
   }
     
@@ -379,12 +398,14 @@ int sql_init(struct rekey_session *sess)
         prtmsg("SQL Initialization action %d failed: %d", i, rc);
       }
       sqlite3_close(dbh);
+      close(dblock);
       return 1;
     }
   }
 #else
 #warning Automatic database initialization not available
 #endif
+  sess->db_lock = dblock;
   sess->dbh = dbh;
   return 0;
 }

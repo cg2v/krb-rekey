@@ -2091,6 +2091,7 @@ void run_session(int s) {
     sess.target_acl = acl_load_builtin(&sess, "<builtin target ACL>",
                                        builtin_target_acl);
 
+  sess.db_lock = -1;
   sess.initialized=1;
   sess.state = REKEY_SESSION_LISTENING;
   for (;;) {

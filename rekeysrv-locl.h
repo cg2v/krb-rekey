@@ -86,6 +86,7 @@ struct rekey_session {
   int authstate;
   int is_admin;
   int is_host;
+  int db_lock;
   sqlite3 *dbh;
   char *realm;
   void *kadm_handle;
@@ -100,6 +101,7 @@ struct rekey_session;
 
 #define REKEY_TARGET_ACL SYSCONFDIR "/rekey.targets"
 #define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
+#define REKEY_DATABASE_LOCK "/var/heimdal/rekeys.lock"
 
 struct gss_OID_desc_struct;
 struct gss_buffer_desc_struct;
