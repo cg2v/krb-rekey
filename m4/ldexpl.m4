@@ -1,4 +1,4 @@
-# ldexpl.m4 serial 10
+# ldexpl.m4 serial 14
 dnl Copyright (C) 2007-2011 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
@@ -7,10 +7,11 @@ dnl with or without modifications, as long as this notice is preserved.
 AC_DEFUN([gl_FUNC_LDEXPL],
 [
   AC_REQUIRE([gl_MATH_H_DEFAULTS])
+  AC_REQUIRE([gl_LONG_DOUBLE_VS_DOUBLE])
   AC_REQUIRE([gl_FUNC_ISNANL]) dnl for ISNANL_LIBM
   dnl Check whether it's declared.
   dnl MacOS X 10.3 has ldexpl() in libc but doesn't declare it in <math.h>.
-  AC_CHECK_DECL([ldexpl], , [HAVE_DECL_LDEXPL=0], [#include <math.h>])
+  AC_CHECK_DECL([ldexpl], , [HAVE_DECL_LDEXPL=0], [[#include <math.h>]])
   LDEXPL_LIBM=
   if test $HAVE_DECL_LDEXPL = 1; then
     gl_CHECK_LDEXPL_NO_LIBM
@@ -52,8 +53,13 @@ AC_DEFUN([gl_FUNC_LDEXPL],
     fi
   fi
   if test $HAVE_DECL_LDEXPL = 0 || test $gl_func_ldexpl = no; then
-    AC_LIBOBJ([ldexpl])
-    LDEXPL_LIBM="$ISNANL_LIBM"
+    dnl Find libraries needed to link lib/ldexpl.c.
+    if test $HAVE_SAME_LONG_DOUBLE_AS_DOUBLE = 1; then
+      AC_REQUIRE([gl_FUNC_LDEXP])
+      LDEXPL_LIBM="$LDEXP_LIBM"
+    else
+      LDEXPL_LIBM="$ISNANL_LIBM"
+    fi
   fi
   AC_SUBST([LDEXPL_LIBM])
 ])
@@ -86,7 +92,11 @@ AC_DEFUN([gl_FUNC_LDEXPL_WORKS],
       AC_RUN_IFELSE(
         [AC_LANG_SOURCE([[
 #include <math.h>
-extern long double ldexpl (long double, int);
+extern
+#ifdef __cplusplus
+"C"
+#endif
+long double ldexpl (long double, int);
 int main()
 {
   int result = 0;

@@ -1,4 +1,4 @@
-# signbit.m4 serial 9
+# signbit.m4 serial 11
 dnl Copyright (C) 2007-2011 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
@@ -58,16 +58,14 @@ AC_DEFUN([gl_SIGNBIT],
     REPLACE_SIGNBIT_USING_GCC=1
   else
     if test "$gl_cv_func_signbit" != yes; then
+      dnl REPLACE_SIGNBIT=1 makes sure the signbit[fdl] functions get built.
       REPLACE_SIGNBIT=1
-      AC_LIBOBJ([signbitf])
-      AC_LIBOBJ([signbitd])
-      AC_LIBOBJ([signbitl])
       gl_FLOAT_SIGN_LOCATION
       gl_DOUBLE_SIGN_LOCATION
       gl_LONG_DOUBLE_SIGN_LOCATION
       if test "$gl_cv_cc_float_signbit" = unknown; then
         dnl Test whether copysignf() is declared.
-        AC_CHECK_DECLS([copysignf], , , [#include <math.h>])
+        AC_CHECK_DECLS([copysignf], , , [[#include <math.h>]])
         if test "$ac_cv_have_decl_copysignf" = yes; then
           dnl Test whether copysignf() can be used without libm.
           AC_CACHE_CHECK([whether copysignf can be used without linking with libm],
@@ -89,7 +87,7 @@ AC_DEFUN([gl_SIGNBIT],
       fi
       if test "$gl_cv_cc_double_signbit" = unknown; then
         dnl Test whether copysign() is declared.
-        AC_CHECK_DECLS([copysign], , , [#include <math.h>])
+        AC_CHECK_DECLS([copysign], , , [[#include <math.h>]])
         if test "$ac_cv_have_decl_copysign" = yes; then
           dnl Test whether copysign() can be used without libm.
           AC_CACHE_CHECK([whether copysign can be used without linking with libm],
@@ -111,7 +109,7 @@ AC_DEFUN([gl_SIGNBIT],
       fi
       if test "$gl_cv_cc_long_double_signbit" = unknown; then
         dnl Test whether copysignl() is declared.
-        AC_CHECK_DECLS([copysignl], , , [#include <math.h>])
+        AC_CHECK_DECLS([copysignl], , , [[#include <math.h>]])
         if test "$ac_cv_have_decl_copysignl" = yes; then
           dnl Test whether copysignl() can be used without libm.
           AC_CACHE_CHECK([whether copysignl can be used without linking with libm],

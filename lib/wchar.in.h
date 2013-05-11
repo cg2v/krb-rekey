@@ -49,7 +49,7 @@
 #else
 /* Normal invocation convention.  */
 
-#ifndef _GL_WCHAR_H
+#ifndef _@GUARD_PREFIX@_WCHAR_H
 
 #define _GL_ALREADY_INCLUDING_WCHAR_H
 
@@ -81,8 +81,8 @@
 
 #undef _GL_ALREADY_INCLUDING_WCHAR_H
 
-#ifndef _GL_WCHAR_H
-#define _GL_WCHAR_H
+#ifndef _@GUARD_PREFIX@_WCHAR_H
+#define _@GUARD_PREFIX@_WCHAR_H
 
 /* The definitions of _GL_FUNCDECL_RPL etc. are copied here.  */
 
@@ -98,6 +98,18 @@
 #  define WEOF -1
 # endif
 #else
+/* MSVC defines wint_t as 'unsigned short' in <crtdefs.h>.
+   This is too small: ISO C 99 section 7.24.1.(2) says that wint_t must be
+   "unchanged by default argument promotions".  Override it.  */
+# if defined _MSC_VER
+#  if !GNULIB_defined_wint_t
+#   include <crtdefs.h>
+typedef unsigned int rpl_wint_t;
+#   undef wint_t
+#   define wint_t rpl_wint_t
+#   define GNULIB_defined_wint_t 1
+#  endif
+# endif
 # ifndef WEOF
 #  define WEOF ((wint_t) -1)
 # endif
@@ -989,6 +1001,6 @@ _GL_WARN_ON_USE (wcswidth, "wcswidth is unportable - "
 #endif
 
 
-#endif /* _GL_WCHAR_H */
-#endif /* _GL_WCHAR_H */
+#endif /* _@GUARD_PREFIX@_WCHAR_H */
+#endif /* _@GUARD_PREFIX@_WCHAR_H */
 #endif
