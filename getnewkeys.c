@@ -73,9 +73,10 @@ int main(int argc, char **argv) {
   char *target=NULL;
   char **targets=NULL;
   int ntargets=0;
+  int quiet=0;
   
   
-  while ((optch = getopt(argc, argv, "k:r:s:P:ap:")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:ap:q")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -92,11 +93,14 @@ int main(int argc, char **argv) {
     case 'a':
       allkeys=1;
       break;
+    case 'q':
+      quiet=1;
+      break;
     case 'p':
       target = optarg;
       break;
     case '?':
-      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]\n");
+      fprintf(stderr, "Usage: getnewkeys [-q] [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]\n");
       exit(1);
     }
   }
@@ -120,10 +124,10 @@ int main(int argc, char **argv) {
   getc(stdin);
 #endif
   if (target) {
-    c_getkeys(conn, keytab, 1, &target, 0);
+    c_getkeys(conn, keytab, 1, &target, quiet);
   } else {
     /* if allkeys, ntargets will be 0 */
-    c_getkeys(conn, keytab, ntargets, targets, 0);
+    c_getkeys(conn, keytab, ntargets, targets, quiet);
   }
     
   c_close(conn);
