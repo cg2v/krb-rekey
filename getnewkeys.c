@@ -120,10 +120,10 @@ int main(int argc, char **argv) {
   getc(stdin);
 #endif
   if (target) {
-    c_getkeys(conn, keytab, 1, &target);
+    c_getkeys(conn, keytab, 1, &target, 0);
   } else {
     /* if allkeys, ntargets will be 0 */
-    c_getkeys(conn, keytab, ntargets, targets);
+    c_getkeys(conn, keytab, ntargets, targets, 0);
   }
     
   c_close(conn);

@@ -935,7 +935,7 @@ static int g_complete(void *vctx, char *principal, int kvno)
 }
 
 
-void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
+void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs, int quiet) {
   krb5_context ctx=NULL;
   krb5_keytab kt=NULL;
   mb_t buf;
@@ -969,7 +969,9 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
   }
   resp = sendrcv(ssl, OP_GETKEYS, buf);
   if (resp == RESP_ERR) {
-    prt_err_reply(buf);
+    reset_cursor(buf);
+    if (!quiet || (buf_getint(buf, &rc) || rc != ERR_NOKEYS))
+      prt_err_reply(buf);
     goto out;
   }
   if (resp == RESP_FATAL) {

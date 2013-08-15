@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
   else if (argc == 2)
     c_status(conn, argv[1]);
   else 
-    c_getkeys(conn, keytab, 0, NULL);
+    c_getkeys(conn, keytab, 0, NULL, 0);
     
   SSL_shutdown(conn);
   SSL_free(conn);
