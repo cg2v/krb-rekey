@@ -18,6 +18,7 @@ if ($::SysName =~ /_f/) {
   $ENV{ac_cv_header_gssapi_gssapi_krb5_h} = 'no';
 }
 PSMake::setup_autoconf(
+  '--sysconfdir=/etc',
   '--with-default-service-principal=rekey/daemon@CS.CMU.EDU',
 );
 PSMake::setup_install();
