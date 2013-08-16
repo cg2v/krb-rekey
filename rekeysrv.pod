@@ -1,0 +1,212 @@
+=head1 NAME
+
+rekeysrv - Kerberos principal rekeying server
+
+=head1 SYNOPSIS
+
+rekeysrv B<-i> [B<-T> I<targets>] [B<-c>] [B<-E> I<etypes>] [B<-a> I<admins>]
+
+rekeysrv [B<-d>] [B<-p> I<pidfile>]
+[B<-T> I<targets>] [B<-c>] [B<-E> I<etypes>] [B<-a> I<admins>]
+
+=head1 DESCRIPTION
+
+B<rekeysrv> coordinates automatic rekeying of Kerberos principals,
+including those whose keys are shared across multiple hosts.  It
+is responsible for generating keys, distributing them to appropriate
+hosts, keeping track of which hosts have downloaded new keys, and
+updating the Kerberos database.
+
+Each time a rekey cycle is started, an administrator names the principal
+to be rekeyed and provides a list of hosts to which the new keys will be
+distributed.  New keys are generated immediately by B<rekeysrv>, but
+held in escrow until they can be distributed to every host on the list.
+As each host downloads and stores the new keys, it informs B<rekeysrv>
+that it has done so.  Once all hosts have recorded the new keys, they
+are stored in the Kerberos database, allowing the KDC to use them in
+issuing tickets.  In this way, no tickets are issued using a service's
+new key until every host providing the service has the key and is able
+to accept such tickets.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-i>
+
+Process a single connection, already attached to a socket on file
+descriptor zero.  The server does not fork, and exits when the
+connection terminates.  This option should be used when B<rekeysrv>
+is run under inetd(8).
+
+=item B<-d>
+
+When running as a daemon, detach and run in the background.  Without
+this option, B<rekeysrv> remains in the foreground.  This option cannot
+be used with B<-i>.
+
+=item B<-p> I<pidfile>
+
+When running as a daemon, write the server's process ID into I<pidfile>,
+so that other tools will know where to send control signals.  The default
+is not to write a pid file.  This option cannot be used with B<-i>.
+
+=item B<-T> I<targets>
+ 
+Specifies the location of the ACL file controlling which principals may be
+the target of rekeying.  I<targets> is an ACL file in the format described
+under L</ACCESS CONTROL FILES> below.  A target is permitted if it matches
+the ACL.
+
+The default is to use F<@sysconfdir@/rekey.targets> if it exists, and a
+built-in ACL otherwise.  The built-in ACL disallows krbtgt and kadmin
+principals, the master key "K/M", all single-component principals except
+"afs", and a variety of commonly-used user instances.
+All other principals with two or more components are allowed.
+
+=item B<-c>
+
+Instructs B<rekeysrv> to generate keys only for "compatbile" enctypes,
+which are those not newer than DES3-CBC-SHA1.  This is the same effect
+created by use of the B<-A> flag to rekeymgr(1), but applies to all
+requests.
+
+This flag is intended to be used when clients have Kerberos software
+which cannot handle newer enctypes, but do not know to use the B<-A>
+flag.
+
+=item B<-E> I<etypes>
+
+Specifies the set of Kerberos enctypes for which new keys should be
+generated.  I<etypes> must be a comma-separated list of enctype numbers.
+The default is to generate keys for any of DES-CBC-CRC, DES3-CBC-SHA1,
+AES128-CTS-HMAC-SHA1-96, AES256-CTS-HMAC-SHA1-96, and ARCFOUR-HMAC-MD5
+that are supported by the Kerberos library.
+
+Note that B<rekeysrv> can generate keys only for enctypes supported by
+the library.  Enctypes 2 (DES-CBC-MD4) and 3 (DES-CBC-MD5) should not
+normally be listed.  Instead, when a DES-CBC-CRC is generated, the same
+key will automatically be used for DES-CBC-MD4 and DES-CBC-MD5 as well.
+
+=item B<-a> I<admins>
+
+=for man .\"<<<===SECT-ADMIN-file===>>>
+
+Specifies the location of the ACL file controlling which clients are treated
+as administrators.  I<admins> is an ACL file in the format described under
+L</ACCESS CONTROL FILES> below.  A client is considered an administrator
+if it matches the ACL.  The default is F<@sysconfdir@/rekey.acl>.
+
+=for man .\"<<<===SECT-ADMIN-ldapgroups===>>>
+
+Specifies the distinguished name of an LDAP group whose members are
+considered administrators.  The default is
+C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu>.
+
+=for man .\"<<<===SECT-ZZZ===>>>
+
+Administrators are able to start, finalize, and abort rekey operations
+and query their status.
+
+=back
+
+=head1 ACCESS CONTROL FILES
+
+This section describes the format of the ACL files used to control
+which targets are permitted and, when using the B<file> admin access
+method, which clients are administrators.
+
+Each ACL file consists of a series of lines, each of which is blank, a
+comment starting with a pound sign (C<#>), or an ACL entry.  An ACL
+entry consists of an optional exclamation point (C<!>) followed by a
+Kerberos principal name, expressed in the string form described in
+RFC1962 section 2.1.1.
+
+To determine whether a subject principal matches the ACL, it is compared
+against each entry in the file, in order, until a matching entry is found.
+If the first matching entry includes the leading exclamation point, of if
+there is no matching entry, then access is denied; that is, the subject
+does not match the ACL.  Otherwise, the subject is considered to match
+the ACL, and access is granted.
+
+=for man \."<<<===SECT-ADMIN-file===>>>
+
+When an ACL file is used as an admin ACL, matching is done by exact
+comparison; an ACL entry matches only if the principal in the ACL file
+is the same as the subject principal.
+
+=for man \."<<<===SECT-ZZZ===>>>
+
+When an ACL file is used to determine valid targets, the principal names
+in the ACL file are treated as patterns, which are matched component-wise
+against the subject principal.  In order for a pattern to match, it must
+have the same number of components as the subject principal, and each
+pattern component must be a wildcard (C<*>) or exactly the same as the
+corresponding subject component.  However, as as special case, if the last
+pattern component is C<**>, it matches the corresponding subject component
+and any number of additional subject components.  This is the only case
+where the pattern and subject need not have the same number of components.
+Finally, the pattern realm must be a wildcard or exactly match the subject
+realm.
+
+
+=head1 CAVEATS
+
+Because the server stores and compares principal names as strings,
+the principal name arguments for most subcommands must be in canonical
+form, including the realm.  Failing to follow this rule will generally
+result in confusing errors.
+
+There is currently no way to tell the server to use specific enctypes,
+and rekeymgr(1) has no way to tell which enctypes may be supported by
+software using a given principal.  Therefore, administrators must take
+care in requesting the appropriate key-generation mode.
+
+=head1 SEE ALSO
+
+rekeymgr(1), getnewkeys(8)
+
+=head1 AUTHOR
+
+The rekey tools were written by Chaskiel Grundman.
+
+=head1 COPYRIGHT
+
+ Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer. 
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+
+ 3. The name "Carnegie Mellon University" must not be used to
+    endorse or promote products derived from this software without
+    prior written permission. For permission or any other legal
+    details, please contact  
+      Office of Technology Transfer
+      Carnegie Mellon University
+      5000 Forbes Avenue
+      Pittsburgh, PA  15213-3890
+      (412) 268-4387, fax: (412) 268-7395
+      tech-transfer@andrew.cmu.edu
+
+ 4. Redistributions of any form whatsoever must retain the following
+    acknowledgment:
+    "This product includes software developed by Computing Services
+     at Carnegie Mellon University (http://www.cmu.edu/computing/)."
+
+ CARNEGIE MELLON UNIVERSITY DISCLAIMS ALL WARRANTIES WITH REGARD TO
+ THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ AND FITNESS, IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY BE LIABLE
+ FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+ AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

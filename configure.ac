@@ -38,9 +38,12 @@ AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=@<:@file|ldapgroup
 AC_ARG_WITH(default-service-principal,
             AS_HELP_STRING([--with-default-service-principal=princ],
                            [default Kerberos principal for server]),
-            [AC_DEFINE_UNQUOTED([REKEY_DEF_SERVICE], ["$withval"])],
-            [AC_DEFINE([REKEY_DEF_SERVICE], [NULL],
+            [def_rekey_service="'$withval'"
+             AC_DEFINE_UNQUOTED([REKEY_DEF_SERVICE], ["$withval"])],
+            [def_rekey_service="the same as specifying '-'"
+             AC_DEFINE([REKEY_DEF_SERVICE], [NULL],
                        [Default rekey server Kerberos principal])])
+AC_SUBST([def_rekey_service])
 
 AC_CHECK_PROG([KRB5CONF], [krb5-config], [krb5-config])
 if test X$KRB5CONF = X; then

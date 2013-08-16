@@ -2,6 +2,7 @@ AUTOMAKE_OPTIONS=foreign 1.9
 bin_PROGRAMS=rekeymgr
 sbin_PROGRAMS=$(SERVER_PROG) getnewkeys age_keytab
 noinst_PROGRAMS=rekeytest
+man_MANS=rekeymgr.1 age_keytab.8 getnewkeys.8 rekeysrv.8
 EXTRA_PROGRAMS=rekeysrv try_acl
 EXTRA_DIST=dhp1024.pem  dhp2048.pem  dhp3072.pem  dhp4096.pem  dhp512.pem \
    dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql SMakefile
@@ -32,3 +33,18 @@ AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib $(KRB_INC_FLAGS) \
               -DSYSCONFDIR='"$(sysconfdir)"'
 LDADD = lib/libgnu.a
 
+KEEP_MAN_SECTS=ADMIN-$(ADMIN_METHOD)
+sub_drs = s%\(\\f(CW\)*\@def_rekey_service\(\\fR\)*\@%$(def_rekey_service)%
+sub_etc = s%\(\\f(CI\)*\@sysconfdir\(\\fI\)*\@%$(sysconfdir)%
+keep_sect = /<<<===SECT-\($(KEEP_MAN_SECTS)\)===>>>/,/<<<===SECT-.*===>>>/p
+cut_sect = /<<<===SECT-.*===>>>/,/<<<===SECT-ZZZ===>>>/d
+#keep_sect = /<<<===KEEP-\($(KEEP_MAN_SECTS)\)===>>>/,/<<<===END-KEEP===>>>/p
+#cut_sect = /<<<===BEGIN-CUT===>>>/,/<<<===END-CUT===>>>/d
+man_sed_prog = '$(sub_drs);$(sub_etc);$(keep_sect);$(cut_sect)'
+
+rekeymgr.1: rekeymgr.1.in
+	sed $(man_sed_prog) < $< > $@
+rekeysrv.8: rekeysrv.8.in
+	sed $(man_sed_prog) < $< > $@
+getnewkeys.8: getnewkeys.8.in
+	sed $(man_sed_prog) < $< > $@
