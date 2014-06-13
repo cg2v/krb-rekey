@@ -19,7 +19,7 @@ rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c acl.c srvutil.c rekeylib.c memmgt.c
 EXTRA_rekeysrv_SOURCES=admin_ldapgroups.c admin_file.c
 rekeysrv_LDADD=$(LDADD) admin_$(ADMIN_METHOD).$(OBJEXT) $(LIB_GSS) $(LIB_SSL) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(INET_NTOP_LIB)
 age_keytab_SOURCES=age_keytab.c krb5_portability.h
-age_keytab_LDADD=$(LDADD) $(LIB_KRB5)
+age_keytab_LDADD=$(LDADD) $(LIB_KRB5) $(LIB_ASN1)
 try_acl_SOURCES=try_acl.c acl.c rekeylib.c memmgt.c memmgt.h rekey-locl.h rekeysrv-locl.h
 try_acl_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KRB5)
 
