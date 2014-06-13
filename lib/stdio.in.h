@@ -1,6 +1,6 @@
 /* A GNU-like <stdio.h>.
 
-   Copyright (C) 2004, 2007-2011 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007-2014 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU Lesser General Public License as published by
@@ -13,8 +13,7 @@
    GNU Lesser General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public License
-   along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
+   along with this program; if not, see <http://www.gnu.org/licenses/>.  */
 
 #if __GNUC__ >= 3
 @PRAGMA_SYSTEM_HEADER@
@@ -35,7 +34,7 @@
 #else
 /* Normal invocation convention.  */
 
-#ifndef _GL_STDIO_H
+#ifndef _@GUARD_PREFIX@_STDIO_H
 
 #define _GL_ALREADY_INCLUDING_STDIO_H
 
@@ -44,8 +43,8 @@
 
 #undef _GL_ALREADY_INCLUDING_STDIO_H
 
-#ifndef _GL_STDIO_H
-#define _GL_STDIO_H
+#ifndef _@GUARD_PREFIX@_STDIO_H
+#define _@GUARD_PREFIX@_STDIO_H
 
 /* Get va_list.  Needed on many systems, including glibc 2.8.  */
 #include <stdarg.h>
@@ -53,7 +52,8 @@
 #include <stddef.h>
 
 /* Get off_t and ssize_t.  Needed on many systems, including glibc 2.8
-   and eglibc 2.11.2.  */
+   and eglibc 2.11.2.
+   May also define off_t to a 64-bit type on native Windows.  */
 #include <sys/types.h>
 
 /* The __attribute__ feature is available in gcc versions 2.5 and later.
@@ -124,6 +124,15 @@
 #define _GL_STDIO_STRINGIZE(token) #token
 #define _GL_STDIO_MACROEXPAND_AND_STRINGIZE(token) _GL_STDIO_STRINGIZE(token)
 
+/* When also using extern inline, suppress the use of static inline in
+   standard headers of problematic Apple configurations, as Libc at
+   least through Libc-825.26 (2013-04-09) mishandles it; see, e.g.,
+   <http://lists.gnu.org/archive/html/bug-gnulib/2012-12/msg00023.html>.
+   Perhaps Apple will fix this some day.  */
+#if (defined _GL_EXTERN_INLINE_IN_USE && defined __APPLE__ \
+     && defined __GNUC__ && defined __STDC__)
+# undef putc_unlocked
+#endif
 
 #if @GNULIB_DPRINTF@
 # if @REPLACE_DPRINTF@
@@ -168,6 +177,26 @@ _GL_CXXALIASWARN (fclose);
 /* Assume fclose is always declared.  */
 _GL_WARN_ON_USE (fclose, "fclose is not always POSIX compliant - "
                  "use gnulib module fclose for portable POSIX compliance");
+#endif
+
+#if @GNULIB_FDOPEN@
+# if @REPLACE_FDOPEN@
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef fdopen
+#   define fdopen rpl_fdopen
+#  endif
+_GL_FUNCDECL_RPL (fdopen, FILE *, (int fd, const char *mode)
+                                  _GL_ARG_NONNULL ((2)));
+_GL_CXXALIAS_RPL (fdopen, FILE *, (int fd, const char *mode));
+# else
+_GL_CXXALIAS_SYS (fdopen, FILE *, (int fd, const char *mode));
+# endif
+_GL_CXXALIASWARN (fdopen);
+#elif defined GNULIB_POSIXCHECK
+# undef fdopen
+/* Assume fdopen is always declared.  */
+_GL_WARN_ON_USE (fdopen, "fdopen on native Windows platforms is not POSIX compliant - "
+                 "use gnulib module fdopen for portability");
 #endif
 
 #if @GNULIB_FFLUSH@
@@ -239,7 +268,7 @@ _GL_CXXALIASWARN (fopen);
 #elif defined GNULIB_POSIXCHECK
 # undef fopen
 /* Assume fopen is always declared.  */
-_GL_WARN_ON_USE (fopen, "fopen on Win32 platforms is not POSIX compatible - "
+_GL_WARN_ON_USE (fopen, "fopen on native Windows platforms is not POSIX compliant - "
                  "use gnulib module fopen for portability");
 #endif
 
@@ -367,7 +396,7 @@ _GL_CXXALIASWARN (freopen);
 # undef freopen
 /* Assume freopen is always declared.  */
 _GL_WARN_ON_USE (freopen,
-                 "freopen on Win32 platforms is not POSIX compatible - "
+                 "freopen on native Windows platforms is not POSIX compliant - "
                  "use gnulib module freopen for portability");
 #endif
 
@@ -461,25 +490,6 @@ _GL_FUNCDECL_SYS (fseeko, int, (FILE *fp, off_t offset, int whence)
 _GL_CXXALIAS_SYS (fseeko, int, (FILE *fp, off_t offset, int whence));
 # endif
 _GL_CXXALIASWARN (fseeko);
-# if (@REPLACE_FSEEKO@ || !@HAVE_FSEEKO@) && !@GNULIB_FSEEK@
-   /* Provide an fseek function that is consistent with fseeko.  */
-   /* In order to avoid that fseek gets defined as a macro here, the
-      developer can request the 'fseek' module.  */
-#  if !GNULIB_defined_fseek_function
-#   undef fseek
-#   define fseek rpl_fseek
-static inline int _GL_ARG_NONNULL ((1))
-rpl_fseek (FILE *fp, long offset, int whence)
-{
-#   if @REPLACE_FSEEKO@
-  return rpl_fseeko (fp, offset, whence);
-#   else
-  return fseeko (fp, offset, whence);
-#   endif
-}
-#   define GNULIB_defined_fseek_function 1
-#  endif
-# endif
 #elif defined GNULIB_POSIXCHECK
 # define _GL_FSEEK_WARN /* Category 1, above.  */
 # undef fseek
@@ -539,25 +549,6 @@ _GL_FUNCDECL_SYS (ftello, off_t, (FILE *fp) _GL_ARG_NONNULL ((1)));
 _GL_CXXALIAS_SYS (ftello, off_t, (FILE *fp));
 # endif
 _GL_CXXALIASWARN (ftello);
-# if (@REPLACE_FTELLO@ || !@HAVE_FTELLO@) && !@GNULIB_FTELL@
-   /* Provide an ftell function that is consistent with ftello.  */
-   /* In order to avoid that ftell gets defined as a macro here, the
-      developer can request the 'ftell' module.  */
-#  if !GNULIB_defined_ftell_function
-#   undef ftell
-#   define ftell rpl_ftell
-static inline long _GL_ARG_NONNULL ((1))
-rpl_ftell (FILE *f)
-{
-#   if @REPLACE_FTELLO@
-  return rpl_ftello (f);
-#   else
-  return ftello (f);
-#   endif
-}
-#   define GNULIB_defined_ftell_function 1
-#  endif
-# endif
 #elif defined GNULIB_POSIXCHECK
 # define _GL_FTELL_WARN /* Category 1, above.  */
 # undef ftell
@@ -593,21 +584,27 @@ _GL_CXXALIAS_RPL (fwrite, size_t,
 _GL_CXXALIAS_SYS (fwrite, size_t,
                   (const void *ptr, size_t s, size_t n, FILE *stream));
 
-/* Work around glibc bug 11959
+/* Work around bug 11959 when fortifying glibc 2.4 through 2.15
    <http://sources.redhat.com/bugzilla/show_bug.cgi?id=11959>,
    which sometimes causes an unwanted diagnostic for fwrite calls.
-   This affects only function declaration attributes, so it's not
-   needed for C++.  */
-#  if !defined __cplusplus && 0 < __USE_FORTIFY_LEVEL
-static inline size_t _GL_ARG_NONNULL ((1, 4))
-rpl_fwrite (const void *ptr, size_t s, size_t n, FILE *stream)
-{
-  size_t r = fwrite (ptr, s, n, stream);
-  (void) r;
-  return r;
-}
+   This affects only function declaration attributes under certain
+   versions of gcc and clang, and is not needed for C++.  */
+#  if (0 < __USE_FORTIFY_LEVEL                                          \
+       && __GLIBC__ == 2 && 4 <= __GLIBC_MINOR__ && __GLIBC_MINOR__ <= 15 \
+       && 3 < __GNUC__ + (4 <= __GNUC_MINOR__)                          \
+       && !defined __cplusplus)
 #   undef fwrite
+#   undef fwrite_unlocked
+extern size_t __REDIRECT (rpl_fwrite,
+                          (const void *__restrict, size_t, size_t,
+                           FILE *__restrict),
+                          fwrite);
+extern size_t __REDIRECT (rpl_fwrite_unlocked,
+                          (const void *__restrict, size_t, size_t,
+                           FILE *__restrict),
+                          fwrite_unlocked);
 #   define fwrite rpl_fwrite
+#   define fwrite_unlocked rpl_fwrite_unlocked
 #  endif
 # endif
 _GL_CXXALIASWARN (fwrite);
@@ -717,22 +714,11 @@ _GL_WARN_ON_USE (getline, "getline is unportable - "
 # endif
 #endif
 
-#if @GNULIB_GETS@
-# if @REPLACE_STDIO_READ_FUNCS@ && @GNULIB_STDIO_H_NONBLOCKING@
-#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
-#   undef gets
-#   define gets rpl_gets
-#  endif
-_GL_FUNCDECL_RPL (gets, char *, (char *s) _GL_ARG_NONNULL ((1)));
-_GL_CXXALIAS_RPL (gets, char *, (char *s));
-# else
-_GL_CXXALIAS_SYS (gets, char *, (char *s));
-#  undef gets
-# endif
-_GL_CXXALIASWARN (gets);
 /* It is very rare that the developer ever has full control of stdin,
-   so any use of gets warrants an unconditional warning.  Assume it is
-   always declared, since it is required by C89.  */
+   so any use of gets warrants an unconditional warning; besides, C11
+   removed it.  */
+#undef gets
+#if HAVE_RAW_DECL_GETS
 _GL_WARN_ON_USE (gets, "gets is a security hole - use fgets instead");
 #endif
 
@@ -788,6 +774,20 @@ _GL_CXXALIAS_SYS (obstack_vprintf, int,
 _GL_CXXALIASWARN (obstack_vprintf);
 #endif
 
+#if @GNULIB_PCLOSE@
+# if !@HAVE_PCLOSE@
+_GL_FUNCDECL_SYS (pclose, int, (FILE *stream) _GL_ARG_NONNULL ((1)));
+# endif
+_GL_CXXALIAS_SYS (pclose, int, (FILE *stream));
+_GL_CXXALIASWARN (pclose);
+#elif defined GNULIB_POSIXCHECK
+# undef pclose
+# if HAVE_RAW_DECL_PCLOSE
+_GL_WARN_ON_USE (pclose, "pclose is unportable - "
+                 "use gnulib module pclose for more portability");
+# endif
+#endif
+
 #if @GNULIB_PERROR@
 /* Print a message to standard error, describing the value of ERRNO,
    (if STRING is not NULL and not empty) prefixed with STRING and ": ",
@@ -819,6 +819,10 @@ _GL_FUNCDECL_RPL (popen, FILE *, (const char *cmd, const char *mode)
                                  _GL_ARG_NONNULL ((1, 2)));
 _GL_CXXALIAS_RPL (popen, FILE *, (const char *cmd, const char *mode));
 # else
+#  if !@HAVE_POPEN@
+_GL_FUNCDECL_SYS (popen, FILE *, (const char *cmd, const char *mode)
+                                 _GL_ARG_NONNULL ((1, 2)));
+#  endif
 _GL_CXXALIAS_SYS (popen, FILE *, (const char *cmd, const char *mode));
 # endif
 _GL_CXXALIASWARN (popen);
@@ -1054,9 +1058,9 @@ _GL_WARN_ON_USE (snprintf, "snprintf is unportable - "
 # endif
 #endif
 
-/* Some people would argue that sprintf should be handled like gets
-   (for example, OpenBSD issues a link warning for both functions),
-   since both can cause security holes due to buffer overruns.
+/* Some people would argue that all sprintf uses should be warned about
+   (for example, OpenBSD issues a link warning for it),
+   since it can cause security holes due to buffer overruns.
    However, we believe that sprintf can be used safely, and is more
    efficient than snprintf in those safe cases; and as proof of our
    belief, we use sprintf in several gnulib modules.  So this header
@@ -1344,7 +1348,6 @@ _GL_WARN_ON_USE (vsprintf, "vsprintf is not always POSIX compliant - "
                       "POSIX compliance");
 #endif
 
-
-#endif /* _GL_STDIO_H */
-#endif /* _GL_STDIO_H */
+#endif /* _@GUARD_PREFIX@_STDIO_H */
+#endif /* _@GUARD_PREFIX@_STDIO_H */
 #endif

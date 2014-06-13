@@ -1,5 +1,5 @@
 /* Substitute for <sys/uio.h>.
-   Copyright (C) 2011 Free Software Foundation, Inc.
+   Copyright (C) 2011-2014 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU Lesser General Public License as published by
@@ -12,15 +12,14 @@
    GNU Lesser General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public License
-   along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
+   along with this program; if not, see <http://www.gnu.org/licenses/>.  */
 
 # if __GNUC__ >= 3
 @PRAGMA_SYSTEM_HEADER@
 # endif
 @PRAGMA_COLUMNS@
 
-#ifndef _GL_SYS_UIO_H
+#ifndef _@GUARD_PREFIX@_SYS_UIO_H
 
 #if @HAVE_SYS_UIO_H@
 
@@ -32,12 +31,12 @@
 
 #endif
 
-#ifndef _GL_SYS_UIO_H
-#define _GL_SYS_UIO_H
+#ifndef _@GUARD_PREFIX@_SYS_UIO_H
+#define _@GUARD_PREFIX@_SYS_UIO_H
 
 #if !@HAVE_SYS_UIO_H@
 /* A platform that lacks <sys/uio.h>.  */
-/* Get 'ssize_t'.  */
+/* Get 'size_t' and 'ssize_t'.  */
 # include <sys/types.h>
 
 # ifdef __cplusplus
@@ -60,5 +59,5 @@ struct iovec {
 
 #endif
 
-#endif /* _GL_SYS_UIO_H */
-#endif /* _GL_SYS_UIO_H */
+#endif /* _@GUARD_PREFIX@_SYS_UIO_H */
+#endif /* _@GUARD_PREFIX@_SYS_UIO_H */

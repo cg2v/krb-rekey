@@ -1,7 +1,7 @@
 /* Header for poll(2) emulation
    Contributed by Paolo Bonzini.
 
-   Copyright 2001-2003, 2007, 2009-2011 Free Software Foundation, Inc.
+   Copyright 2001-2003, 2007, 2009-2014 Free Software Foundation, Inc.
 
    This file is part of gnulib.
 
@@ -16,10 +16,9 @@
    GNU Lesser General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public License along
-   with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
+   with this program; if not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef _GL_POLL_H
+#ifndef _@GUARD_PREFIX@_POLL_H
 
 #if __GNUC__ >= 3
 @PRAGMA_SYSTEM_HEADER@
@@ -31,8 +30,8 @@
 # @INCLUDE_NEXT@ @NEXT_POLL_H@
 #endif
 
-#ifndef _GL_POLL_H
-#define _GL_POLL_H
+#ifndef _@GUARD_PREFIX@_POLL_H
+#define _@GUARD_PREFIX@_POLL_H
 
 
 /* The definitions of _GL_FUNCDECL_RPL etc. are copied here.  */
@@ -45,7 +44,7 @@
 /* fake a poll(2) environment */
 # define POLLIN      0x0001      /* any readable data available   */
 # define POLLPRI     0x0002      /* OOB/Urgent readable data      */
-# define POLLOUT     0x0004      /* file descriptor is writeable  */
+# define POLLOUT     0x0004      /* file descriptor is writable   */
 # define POLLERR     0x0008      /* some poll error occurred      */
 # define POLLHUP     0x0010      /* file descriptor was "hung up" */
 # define POLLNVAL    0x0020      /* requested events "invalid"    */
@@ -100,5 +99,5 @@ _GL_WARN_ON_USE (poll, "poll is unportable - "
 #endif
 
 
-#endif /* _GL_POLL_H */
-#endif /* _GL_POLL_H */
+#endif /* _@GUARD_PREFIX@_POLL_H */
+#endif /* _@GUARD_PREFIX@_POLL_H */

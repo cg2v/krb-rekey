@@ -1,6 +1,6 @@
 /* Provide a sys/socket header file for systems lacking it (read: MinGW)
    and for systems where it is incomplete.
-   Copyright (C) 2005-2011 Free Software Foundation, Inc.
+   Copyright (C) 2005-2014 Free Software Foundation, Inc.
    Written by Simon Josefsson.
 
    This program is free software; you can redistribute it and/or modify
@@ -14,8 +14,7 @@
    GNU Lesser General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public License
-   along with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
+   along with this program; if not, see <http://www.gnu.org/licenses/>.  */
 
 /* This file is supposed to be used on platforms that lack <sys/socket.h>,
    on platforms where <sys/socket.h> cannot be included standalone, and on
@@ -40,7 +39,7 @@
 #else
 /* Normal invocation convention.  */
 
-#ifndef _GL_SYS_SOCKET_H
+#ifndef _@GUARD_PREFIX@_SYS_SOCKET_H
 
 #if @HAVE_SYS_SOCKET_H@
 
@@ -61,8 +60,16 @@
 
 #endif
 
-#ifndef _GL_SYS_SOCKET_H
-#define _GL_SYS_SOCKET_H
+#ifndef _@GUARD_PREFIX@_SYS_SOCKET_H
+#define _@GUARD_PREFIX@_SYS_SOCKET_H
+
+#ifndef _GL_INLINE_HEADER_BEGIN
+ #error "Please include config.h first."
+#endif
+_GL_INLINE_HEADER_BEGIN
+#ifndef _GL_SYS_SOCKET_INLINE
+# define _GL_SYS_SOCKET_INLINE _GL_INLINE
+#endif
 
 /* The definitions of _GL_FUNCDECL_RPL etc. are copied here.  */
 
@@ -85,7 +92,7 @@ typedef unsigned short  sa_family_t;
 #  endif
 # endif
 #else
-# include <alignof.h>
+# include <stdalign.h>
 /* Code taken from glibc sysdeps/unix/sysv/linux/bits/socket.h on
    2009-05-08, licensed under LGPLv2.1+, plus portability fixes. */
 # define __ss_aligntype unsigned long int
@@ -143,7 +150,7 @@ struct sockaddr_storage
    that you can influence which definitions you get by setting the
    WINVER symbol before including these two files.  For example,
    getaddrinfo is only available if _WIN32_WINNT >= 0x0501 (that
-   symbol is set indiriectly through WINVER).  You can set this by
+   symbol is set indirectly through WINVER).  You can set this by
    adding AC_DEFINE(WINVER, 0x0501) to configure.ac.  Note that your
    code may not run on older Windows releases then.  My Windows 2000
    box was not able to run the code, for example.  The situation is
@@ -194,13 +201,15 @@ struct msghdr {
 
 #endif
 
+/* Fix some definitions from <winsock2.h>.  */
+
 #if @HAVE_WINSOCK2_H@
 
 # if !GNULIB_defined_rpl_fd_isset
 
 /* Re-define FD_ISSET to avoid a WSA call while we are not using
    network sockets.  */
-static inline int
+_GL_SYS_SOCKET_INLINE int
 rpl_fd_isset (SOCKET fd, fd_set * set)
 {
   u_int i;
@@ -222,27 +231,37 @@ rpl_fd_isset (SOCKET fd, fd_set * set)
 
 #endif
 
+/* Hide some function declarations from <winsock2.h>.  */
+
+#if @HAVE_WINSOCK2_H@
+# if !defined _@GUARD_PREFIX@_UNISTD_H
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef close
+#   define close close_used_without_including_unistd_h
+#  else
+    _GL_WARN_ON_USE (close,
+                     "close() used without including <unistd.h>");
+#  endif
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef gethostname
+#   define gethostname gethostname_used_without_including_unistd_h
+#  else
+    _GL_WARN_ON_USE (gethostname,
+                     "gethostname() used without including <unistd.h>");
+#  endif
+# endif
+# if !defined _@GUARD_PREFIX@_SYS_SELECT_H
+#  if !(defined __cplusplus && defined GNULIB_NAMESPACE)
+#   undef select
+#   define select select_used_without_including_sys_select_h
+#  else
+    _GL_WARN_ON_USE (select,
+                     "select() used without including <sys/select.h>");
+#  endif
+# endif
+#endif
+
 /* Wrap everything else to use libc file descriptors for sockets.  */
-
-#if @HAVE_WINSOCK2_H@ && !defined _GL_UNISTD_H
-# if !(defined __cplusplus && defined GNULIB_NAMESPACE)
-#  undef close
-#  define close close_used_without_including_unistd_h
-# else
-   _GL_WARN_ON_USE (close,
-                    "close() used without including <unistd.h>");
-# endif
-#endif
-
-#if @HAVE_WINSOCK2_H@ && !defined _GL_UNISTD_H
-# if !(defined __cplusplus && defined GNULIB_NAMESPACE)
-#  undef gethostname
-#  define gethostname gethostname_used_without_including_unistd_h
-# else
-   _GL_WARN_ON_USE (gethostname,
-                    "gethostname() used without including <unistd.h>");
-# endif
-#endif
 
 #if @GNULIB_SOCKET@
 # if @HAVE_WINSOCK2_H@
@@ -633,16 +652,6 @@ _GL_WARN_ON_USE (shutdown, "shutdown is not always POSIX compliant - "
 # endif
 #endif
 
-#if @HAVE_WINSOCK2_H@
-# if !(defined __cplusplus && defined GNULIB_NAMESPACE)
-#  undef select
-#  define select select_used_without_including_sys_select_h
-# else
-   _GL_WARN_ON_USE (select,
-                    "select() used without including <sys/select.h>");
-# endif
-#endif
-
 #if @GNULIB_ACCEPT4@
 /* Accept a connection on a socket, with specific opening flags.
    The flags are a bitmask, possibly including O_CLOEXEC (defined in <fcntl.h>)
@@ -676,6 +685,8 @@ _GL_WARN_ON_USE (accept4, "accept4 is unportable - "
 # endif
 #endif
 
-#endif /* _GL_SYS_SOCKET_H */
-#endif /* _GL_SYS_SOCKET_H */
+_GL_INLINE_HEADER_END
+
+#endif /* _@GUARD_PREFIX@_SYS_SOCKET_H */
+#endif /* _@GUARD_PREFIX@_SYS_SOCKET_H */
 #endif
