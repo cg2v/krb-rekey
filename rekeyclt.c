@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
   if (argc - optind < 1) {
     
   usage:
-    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-d] command [args]\n");
+    fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d|-D] [-A] command [args]\n");
     fprintf(stderr, "       rekeyclt start principalname hostname [hostname]...\n");
     fprintf(stderr, "       rekeyclt status principalname\n");
     fprintf(stderr, "       rekeyclt abort principalname\n");
