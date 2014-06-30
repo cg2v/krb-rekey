@@ -1,5 +1,5 @@
-# unistd_h.m4 serial 62
-dnl Copyright (C) 2006-2011 Free Software Foundation, Inc.
+# unistd_h.m4 serial 67
+dnl Copyright (C) 2006-2014 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
@@ -11,7 +11,6 @@ AC_DEFUN([gl_UNISTD_H],
   dnl Use AC_REQUIRE here, so that the default behavior below is expanded
   dnl once only, before all statements that occur in other macros.
   AC_REQUIRE([gl_UNISTD_H_DEFAULTS])
-  AC_REQUIRE([AC_C_INLINE])
 
   gl_CHECK_NEXT_HEADERS([unistd.h])
   if test $ac_cv_header_unistd_h = yes; then
@@ -23,6 +22,9 @@ AC_DEFUN([gl_UNISTD_H],
 
   dnl Ensure the type pid_t gets defined.
   AC_REQUIRE([AC_TYPE_PID_T])
+
+  dnl Determine WINDOWS_64_BIT_OFF_T.
+  AC_REQUIRE([gl_TYPE_OFF_T])
 
   dnl Check for declarations of anything we want to poison if the
   dnl corresponding gnulib module is not in use.
@@ -41,10 +43,11 @@ AC_DEFUN([gl_UNISTD_H],
 #endif
     ]], [chdir chown dup dup2 dup3 environ euidaccess faccessat fchdir fchownat
     fdatasync fsync ftruncate getcwd getdomainname getdtablesize getgroups
-    gethostname getlogin getlogin_r getpagesize getusershell setusershell
-    endusershell group_member lchown link linkat lseek pipe pipe2 pread pwrite
-    readlink readlinkat rmdir sleep symlink symlinkat ttyname_r unlink unlinkat
-    usleep])
+    gethostname getlogin getlogin_r getpagesize
+    getusershell setusershell endusershell
+    group_member isatty lchown link linkat lseek pipe pipe2 pread pwrite
+    readlink readlinkat rmdir sethostname sleep symlink symlinkat ttyname_r
+    unlink unlinkat usleep])
 ])
 
 AC_DEFUN([gl_UNISTD_MODULE_INDICATOR],
@@ -82,6 +85,7 @@ AC_DEFUN([gl_UNISTD_H_DEFAULTS],
   GNULIB_GETPAGESIZE=0;          AC_SUBST([GNULIB_GETPAGESIZE])
   GNULIB_GETUSERSHELL=0;         AC_SUBST([GNULIB_GETUSERSHELL])
   GNULIB_GROUP_MEMBER=0;         AC_SUBST([GNULIB_GROUP_MEMBER])
+  GNULIB_ISATTY=0;               AC_SUBST([GNULIB_ISATTY])
   GNULIB_LCHOWN=0;               AC_SUBST([GNULIB_LCHOWN])
   GNULIB_LINK=0;                 AC_SUBST([GNULIB_LINK])
   GNULIB_LINKAT=0;               AC_SUBST([GNULIB_LINKAT])
@@ -94,6 +98,7 @@ AC_DEFUN([gl_UNISTD_H_DEFAULTS],
   GNULIB_READLINK=0;             AC_SUBST([GNULIB_READLINK])
   GNULIB_READLINKAT=0;           AC_SUBST([GNULIB_READLINKAT])
   GNULIB_RMDIR=0;                AC_SUBST([GNULIB_RMDIR])
+  GNULIB_SETHOSTNAME=0;          AC_SUBST([GNULIB_SETHOSTNAME])
   GNULIB_SLEEP=0;                AC_SUBST([GNULIB_SLEEP])
   GNULIB_SYMLINK=0;              AC_SUBST([GNULIB_SYMLINK])
   GNULIB_SYMLINKAT=0;            AC_SUBST([GNULIB_SYMLINKAT])
@@ -130,6 +135,7 @@ AC_DEFUN([gl_UNISTD_H_DEFAULTS],
   HAVE_PWRITE=1;          AC_SUBST([HAVE_PWRITE])
   HAVE_READLINK=1;        AC_SUBST([HAVE_READLINK])
   HAVE_READLINKAT=1;      AC_SUBST([HAVE_READLINKAT])
+  HAVE_SETHOSTNAME=1;     AC_SUBST([HAVE_SETHOSTNAME])
   HAVE_SLEEP=1;           AC_SUBST([HAVE_SLEEP])
   HAVE_SYMLINK=1;         AC_SUBST([HAVE_SYMLINK])
   HAVE_SYMLINKAT=1;       AC_SUBST([HAVE_SYMLINKAT])
@@ -142,6 +148,7 @@ AC_DEFUN([gl_UNISTD_H_DEFAULTS],
   HAVE_DECL_GETLOGIN_R=1; AC_SUBST([HAVE_DECL_GETLOGIN_R])
   HAVE_DECL_GETPAGESIZE=1; AC_SUBST([HAVE_DECL_GETPAGESIZE])
   HAVE_DECL_GETUSERSHELL=1; AC_SUBST([HAVE_DECL_GETUSERSHELL])
+  HAVE_DECL_SETHOSTNAME=1; AC_SUBST([HAVE_DECL_SETHOSTNAME])
   HAVE_DECL_TTYNAME_R=1;  AC_SUBST([HAVE_DECL_TTYNAME_R])
   HAVE_OS_H=0;            AC_SUBST([HAVE_OS_H])
   HAVE_SYS_PARAM_H=0;     AC_SUBST([HAVE_SYS_PARAM_H])
@@ -150,11 +157,14 @@ AC_DEFUN([gl_UNISTD_H_DEFAULTS],
   REPLACE_DUP=0;          AC_SUBST([REPLACE_DUP])
   REPLACE_DUP2=0;         AC_SUBST([REPLACE_DUP2])
   REPLACE_FCHOWNAT=0;     AC_SUBST([REPLACE_FCHOWNAT])
+  REPLACE_FTRUNCATE=0;    AC_SUBST([REPLACE_FTRUNCATE])
   REPLACE_GETCWD=0;       AC_SUBST([REPLACE_GETCWD])
   REPLACE_GETDOMAINNAME=0; AC_SUBST([REPLACE_GETDOMAINNAME])
+  REPLACE_GETDTABLESIZE=0; AC_SUBST([REPLACE_GETDTABLESIZE])
   REPLACE_GETLOGIN_R=0;   AC_SUBST([REPLACE_GETLOGIN_R])
   REPLACE_GETGROUPS=0;    AC_SUBST([REPLACE_GETGROUPS])
   REPLACE_GETPAGESIZE=0;  AC_SUBST([REPLACE_GETPAGESIZE])
+  REPLACE_ISATTY=0;       AC_SUBST([REPLACE_ISATTY])
   REPLACE_LCHOWN=0;       AC_SUBST([REPLACE_LCHOWN])
   REPLACE_LINK=0;         AC_SUBST([REPLACE_LINK])
   REPLACE_LINKAT=0;       AC_SUBST([REPLACE_LINKAT])
