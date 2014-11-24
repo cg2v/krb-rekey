@@ -110,7 +110,7 @@ static int pattern_match(krb5_context ctx, char *lrealm,
 #elif defined(KRB5_PRINCIPAL_MIT_STYLE)
 
 /* Returns 1 iff component <key> matches component pattern <pat>. */
-static int kdcmp(krb5_data key, krb5_data pat)
+static int kdcmp(krb5_data *key, krb5_data *pat)
 {
   if (pat->length == 1 && pat->data[0] == '*') return 1;
   if (pat->length != key->length) return 0;
@@ -139,8 +139,8 @@ static int pattern_match(krb5_context ctx, char *lrealm,
   if (!scomp || !kdcmp(scomp, pcomp))
     return 0;
 
-  slen = krb5_princ_size(subject);
-  plen = krb5_princ_size(pattern);
+  slen = krb5_princ_size(ctx, subject);
+  plen = krb5_princ_size(ctx, pattern);
   for (i = 0; i < slen && i < plen; i++) {
     scomp = krb5_princ_component(ctx, subject, i);
     pcomp = krb5_princ_component(ctx, pattern, i);
