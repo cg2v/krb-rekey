@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -88,11 +89,16 @@
 /* fetch the new keys this host is supposed to get */
 /* requires host authorization */
 #define OP_GETKEYS 6
-/* No data */
+/* optional data is a list of principals
+   4 bytes of principal count {
+     4 bytes of principal name length
+     N bytes of principal
+   }
+*/
 
 /* inform the server that a particular keyset has been
    written to a keytab */
-/* requires host authorization */
+/* requires host, admin, or target authorization */
 #define OP_COMMITKEY 7
 /* Data is principal name, kvno 
    4 bytes of principal name length
@@ -100,7 +106,7 @@
    4 bytes of kvno
 */
 /* rekey a non-shared principal */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_SIMPLEKEY 8
 /* data is principal name 
    4 bytes of principal name length
@@ -108,7 +114,7 @@
    4 bytes of flags
 */
 /* abort an in-progress rekey */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_ABORTREQ 9
 /* data is principal name
   4 bytes of principal name length
@@ -117,7 +123,7 @@
 
 /* finalize (complete) an in-progress rekey */
 /* There must not be any hosts which have not yet commited */
-/* requires admin authorization */
+/* requires admin or target authorization */
 #define OP_FINALIZE 10
 /* data is principal name
   4 bytes of principal name length

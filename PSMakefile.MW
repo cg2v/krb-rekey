@@ -1,0 +1,30 @@
+# PSMakefile for rekey (MiniWorld)
+
+$MakeVars{DESTDIR} = \$ReleaseDir;
+$Make = $ENV{MAKE} = 'gmake';
+
+@configure_args = qw(
+  --prefix=/usr/local
+  --sysconfdir=/etc
+  --localstatedir=/var
+  --with-default-service-principal=rekey/daemon@CS.CMU.EDU
+);
+
+if ($SysName eq 'sun4x_59') {
+  $ENV{CC} = '/opt/SUNWspro/bin/cc';
+  $ENV{CPPFLAGS} = '-I/usr/local/include';
+  $ENV{LDFLAGS}  = '-L/usr/local/lib';
+  $ENV{LDFLAGS} .= ' -Wl,-R/usr/local/lib';
+  $ENV{LIBS} = '-lcrypto -lsocket -lnsl'
+}
+
+if ($SysName =~ /^amd64_u/) {
+  $ENV{KRB5CONF} = '/usr/bin/krb5-config';
+  push(@configure_args, qw(
+    --enable-server
+    --enable-kadm5-client
+    --with-admin-method=file
+  ));
+}
+
+$LinkAction = [ '%C/configure', @configure_args ];

@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,6 +56,7 @@
 #include <sys/signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <limits.h>
 
 #define SESS_PRIVATE
 #define NEED_KRB5
@@ -70,7 +72,7 @@
 #include <gssapi/gssapi_krb5.h>
 #endif
 
-static krb5_enctype enctypes[] = {
+static krb5_enctype std_enctypes[] = {
   ENCTYPE_DES_CBC_CRC,
   ENCTYPE_DES3_CBC_SHA1,
 #if HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96
@@ -84,34 +86,7 @@ static krb5_enctype enctypes[] = {
 #endif
   ENCTYPE_NULL
 };
-
-
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-static int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val) {
-  const char *s;
-  if (val <=0)
-    return 0;
-  if (!(s=krb5_principal_get_comp_string(context, princ, val-1)) ||
-      (strlen(s) == 0))
-    return 0;
-  if ((s=krb5_principal_get_comp_string(context, princ, val)) &&
-      (strlen(s) > 0))
-    return 0;
-  return 1;
-}
-#define compare_princ_comp(obj, ts) (strlen(obj) == strlen(ts) && !strcmp(obj, ts))
-#define dup_comp_string(obj) strdup(obj)
-#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-#define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
-#define compare_princ_comp(obj, ts) (obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length))
-static char *dup_comp_string(krb5_data *obj) {
-  char *ret;
-  ret=malloc(obj->length+1);
-  memcpy(ret, obj->data, obj->length);
-  ret[obj->length]=0;
-  return ret;
-}
-#endif    
+krb5_enctype *cfg_enctypes = std_enctypes;
 
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
@@ -119,9 +94,9 @@ static void check_authz(struct rekey_session *sess)
   size_t rl;
   char *username;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm, *c1, *c2;
+  const char  *princ_realm;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-  krb5_data *princ_realm, *c1, *c2;
+  krb5_data *princ_realm;
 #else
 #error Cannot figure out how krb5_principals objects work
 #endif
@@ -134,8 +109,6 @@ static void check_authz(struct rekey_session *sess)
   if (!princ_realm || rl != strlen(princ_realm) ||
       strncmp(princ_realm , sess->realm, rl))
     return;
-  c1 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 0);
-  c2 = krb5_principal_get_comp_string(sess->kctx, sess->princ, 1);
 
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
   
@@ -145,30 +118,19 @@ static void check_authz(struct rekey_session *sess)
     return;
   if (krb5_princ_size(sess->kctx, sess->princ) != 2)
     return;
-  c1 = krb5_princ_component(sess->kctx, sess->princ, 0);
-  c2 = krb5_princ_component(sess->kctx, sess->princ, 1);
 #endif
   
   if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
-      compare_princ_comp(c1, "host")) {
+      compare_princ_comp(sess->kctx, sess->princ, 0, "host")) {
     sess->is_host = 1;
-    sess->hostname=dup_comp_string(c2);
+    sess->hostname=dup_comp_string(sess->kctx, sess->princ, 1);
     if (!sess->hostname) /* mark not a valid host, since we don't have its identification */
       sess->is_host = 0;
     return;
   }
   
-  /* a better interface would be to pass the whole session object to 
-     is_admin, but that would involve refactoring the principal accessor
-     stuff into exported functions so is_admin could use them */
-
-  if (princ_ncomp_eq(sess->kctx, sess->princ, 2) && 
-      compare_princ_comp(c2, "admin")) {
-    username=dup_comp_string(c1);
-    if (is_admin(username))
-      sess->is_admin = 1;
-    free(username);
-  }
+  if (is_admin(sess))
+    sess->is_admin = 1;
 }
 
 
@@ -179,114 +141,40 @@ static void check_authz(struct rekey_session *sess)
 
 static int check_target(struct rekey_session *sess, krb5_principal target) 
 {
-  int ret=1;
-  size_t rl;
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-  const char  *princ_realm;
-  const char  *c1, *c2;
-#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
-  krb5_data *princ_realm;
-  krb5_data *c1, *c2;
-#endif
-
   if (krealm_init(sess))
-    return ret;
-  rl = strlen(sess->realm);
-#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
-
-  princ_realm = krb5_principal_get_realm(sess->kctx, target); 
-  if (!princ_realm || rl != strlen(princ_realm) ||
-      strncmp(princ_realm , sess->realm, rl)) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
-    goto out;
-  }
-  c1 = krb5_principal_get_comp_string(sess->kctx, target, 0);
-  c2 = krb5_principal_get_comp_string(sess->kctx, target, 1);
-#elif defined(KRB5_PRINCIPAL_MIT_STYLE)
-
-  princ_realm = krb5_princ_realm(sess->kctx, target); 
-  if (!princ_realm || rl != princ_realm->length ||
-      strncmp(princ_realm->data , sess->realm, rl)) {
-    send_error(sess, ERR_AUTHZ, "Requested principal is in wrong realm");
-    goto out;
-  }
-  if (krb5_princ_size(sess->kctx, target) < 1)
-    goto out;
-  c1 = krb5_princ_component(sess->kctx, target, 0);
-  if (krb5_princ_size(sess->kctx, target) >= 2)
-    c2 = krb5_princ_component(sess->kctx, target, 1);
-  else
-    c2 = NULL;
-#endif
-#ifdef LIMIT_TARGET
-  if (!compare_princ_comp(c1, LIMIT_TARGET)) {
+    return 1;
+  if (!acl_check(sess, sess->target_acl, target, 0)) {
     send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
+    return 1;
   }
-#else
-  /* default principal exclusions: kadmin, local tgt, master key verifier, 
-     single component that isn't afs@ (i.e. users). */
-  if (!c1) {
-  badprinc:
-    send_error(sess, ERR_AUTHZ, "Requested principal may not be modified");
-    goto out;
-  }
-  if (princ_ncomp_eq(sess->kctx, target, 1)  && !compare_princ_comp(c1, "afs"))
-    goto badprinc;
-
-  if (compare_princ_comp(c1, "kadmin"))
-     goto badprinc;
-  if (princ_ncomp_eq(sess->kctx, target, 2)) {
-    /* should never happen, but this should silence static analyzers */
-    if (c2 == NULL)
-      goto badprinc;
-    if (compare_princ_comp(c1, "krbtgt")) {
-      char *rs=dup_comp_string(princ_realm);
-      if (compare_princ_comp(c1, "krbtgt") && compare_princ_comp(c2, rs))
-	goto badprinc;
-      free(rs);
-    }
-    if (compare_princ_comp(c1, "K") && compare_princ_comp(c2, "M"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "root"))
-      goto badprinc;
-    /* idm/admin is a password. adm/admin will have to be done manually */
-    if (compare_princ_comp(c2, "admin"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "gatekeeper"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "ldap"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "admin-afs"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "cyradm"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "daemon"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "ftp"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "mail"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "misc"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "remote"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "z"))
-      goto badprinc;
-    if (compare_princ_comp(c2, "jabber"))
-      goto badprinc;
-    /* user/zephyr bad, zephyr/zephyr ok */
-    if (!compare_princ_comp(c1, "zephyr") && 
-	compare_princ_comp(c2, "zephyr"))
-      goto badprinc;
-    /* end two component */
-  }
-#endif
-  ret=0;
-  
- out:
-  return ret;
+  return 0;
 }
+
+/* This is the default target ACL, used if no rekey.targets file exists */
+static char *builtin_target_acl[] = {
+  "afs",
+  "!*",
+  "!kadmin/**",
+  "!krbtgt/**",
+  "!K/M",
+  "!*/root",
+  "!*/admin",
+  "!*/gatekeeper",
+  "!*/ldap",
+  "!*/admin-afs",
+  "!*/cyradm",
+  "!*/daemon",
+  "!*/ftp",
+  "!*/mail",
+  "!*/misc",
+  "!*/remote",
+  "!*/z",
+  "!*/jabber",
+  "zephyr/zephyr",
+  "!*/zephyr",
+  "*/**",
+  NULL
+};
 
 /* lookup a principal in the local database, and return its id and kvno if
    requested */
@@ -488,7 +376,11 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
   krb5_error_code kc;
   sqlite3_stmt *ins=NULL;
   int rc;
-  pEtype=enctypes;
+
+  if (reqflags & REQFLAG_DESONLY)
+    pEtype=std_enctypes;
+  else
+    pEtype=cfg_enctypes;
   rc = sqlite3_prepare_v2(sess->dbh, 
 			  "INSERT INTO keys (principal, enctype, key) VALUES (?, ?, ?);",
 			  -1, &ins, NULL);
@@ -612,6 +504,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t
 #ifdef HAVE_KADM5_CHPASS_PRINCIPAL_WITH_KEY
 static int prepare_kadm_key(krb5_key_data *k, krb5_kvno kvno, int enctype, int keylen,
 		   const unsigned char *keydata) {
+  memset(k, 0, sizeof(*k));
   k->key_data_ver = 1;
   k->key_data_kvno = kvno;
   k->key_data_type[0]=enctype;
@@ -908,11 +801,6 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
     send_error(sess, ERR_BADOP, "Authentication already complete");
     return;
   }
-  if (krb5_init_context(&sess->kctx)) {
-      
-      send_fatal(sess, ERR_OTHER, "Internal kerberos error on server");
-      fatal("Authentication failed: krb5_init_context failed");
-  }  
   reset_cursor(buf);
   if (buf_getint(buf, &f))
     goto badpkt;
@@ -921,12 +809,21 @@ static void s_auth(struct rekey_session *sess, mb_t buf) {
   if (buf_getint(buf, &l))
     goto badpkt;
   in.length = l;
-  in.value = buf->cursor;
+  in.value = malloc(l);
+  if (!in.value) {
+    send_fatal(sess, ERR_OTHER, "Out of memory receiving auth token");
+    fatal("Out of memory receiving auth token");
+  }
+  if (buf_getdata(buf, in.value, l)) {
+    free(in.value);
+    goto badpkt;
+  }
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
 			       &in, GSS_C_NO_CHANNEL_BINDINGS,
 			       &sess->name, &sess->mech, &out, &rflag, NULL,
 			       NULL);
+  free(in.value);
   if (GSS_ERROR(maj)) {
     if (out.length) {
       send_gss_token(sess, RESP_AUTHERR, 0, &out);
@@ -1043,12 +940,21 @@ static void s_autherr(struct rekey_session *sess, mb_t buf)
   if (buf_getint(buf, (unsigned int *)&l))
     goto badpkt;
   in.length=l;
-  in.value = buf->cursor;
+  in.value = malloc(l);
+  if (!in.value) {
+    send_fatal(sess, ERR_OTHER, "Out of memory receiving auth token");
+    fatal("Out of memory receiving auth token");
+  }
+  if (buf_getdata(buf, in.value, l)) {
+    free(in.value);
+    goto badpkt;
+  }
   memset(&out, 0, sizeof(out));
   maj = gss_accept_sec_context(&min, &sess->gctx, GSS_C_NO_CREDENTIAL,
 			       &in, GSS_C_NO_CHANNEL_BINDINGS,
 			       &sess->name, &sess->mech, &out, NULL, NULL,
 			       NULL);
+  free(in.value);
   if (GSS_ERROR(maj)) {
     prt_gss_error(sess->mech, maj, min);
   } else {
@@ -1202,25 +1108,18 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     no_send = 1;
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
   if (buf_getint(buf, &flags))
     goto badpkt;
-  flags |= REQFLAG_COMPAT_ENCTYPE;
+  if (force_compat_enctype)
+    flags |= REQFLAG_COMPAT_ENCTYPE;
   if (check_flags(flags)) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
     no_send = 1;
@@ -1276,7 +1175,6 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
   if (generate_keys(sess, princid, flags))
     goto freeall;
   
-  sess_send(sess, RESP_OK, NULL);
   dbaction=1;
   no_send = 1;
   goto freeall;
@@ -1305,6 +1203,9 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
       sql_rollback_trans(sess);
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    } else {
+      if (no_send == 0)
+        sess_send(sess, RESP_OK, NULL);
     }
   } else if (dbaction < 0)
     sql_rollback_trans(sess);
@@ -1619,20 +1520,12 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
 
   if (buf_getint(buf, &lkvno))
@@ -1765,7 +1658,8 @@ static void s_commitkey(struct rekey_session *sess, mb_t buf)
     if (allowed == 0) {
       send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator, an allowed host, or the target)");
       prtmsg("Not authorized to commitkey");
-      return;
+      no_send = 1;
+      goto freeall;
     }
   }
 
@@ -1847,20 +1741,12 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
   if (sess->is_admin == 0 &&
       !krb5_principal_compare(sess->kctx, 
 			      sess->princ,
@@ -1872,7 +1758,8 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
 
   if (buf_getint(buf, &flags))
     goto badpkt;
-  flags |= REQFLAG_COMPAT_ENCTYPE;
+  if (force_compat_enctype)
+    flags |= REQFLAG_COMPAT_ENCTYPE;
   if (check_flags(flags)) {
     send_error(sess, ERR_BADREQ, "Invalid flags specified");
     no_send=1;
@@ -1904,8 +1791,6 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
   if (add_keys_one(sess, princid, buf))
     goto freeall;
   dbaction=1;
-  sess_send(sess, RESP_KEYS, buf);
-  no_send = 1;
   goto freeall;
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
@@ -1924,6 +1809,9 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
       sql_rollback_trans(sess);
       if (no_send == 0)
         send_error(sess, ERR_OTHER, "Server internal error (database failure)");
+    } else {
+      if (no_send == 0)
+        sess_send(sess, RESP_KEYS, buf);
     }
   } else if (dbaction < 0)
     sql_rollback_trans(sess);
@@ -1936,17 +1824,42 @@ static void s_simplekey(struct rekey_session *sess, mb_t buf)
 /* Process an ABORTREQ request. Deletes a request from the local database */
 static void s_abortreq(struct rekey_session *sess, mb_t buf)
 {
-  char *principal = NULL;
+  char *principal = NULL, *unp;
   sqlite_int64 princid;
-  int match;
+  int rc, match;
+  krb5_principal target=NULL;
 
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
-  }
   if (buf_getstring(buf, &principal, malloc))
     goto badpkt;
+  rc = krb5_parse_name(sess->kctx, principal, &target);
+  if (rc) {
+    prtmsg("Cannot parse target name %s (kerberos error %s)", principal, krb5_get_err_text(sess->kctx, rc));
+    send_error(sess, ERR_BADREQ, "Bad principal name");
+    goto freeall;
+  }
+
+  rc=krb5_unparse_name(sess->kctx, target, &unp);
+  if (rc) {
+    prtmsg("Cannot get canonical name for %s: %s", principal, krb5_get_err_text(sess->kctx, rc));
+    goto interr;
+  }
+  if (strcmp(unp, principal)) {
+    free_unparsed_name(sess->kctx, unp);
+    send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
+    prtmsg("Requested principal %s is not canonical", principal);
+    goto freeall;
+  }
+  free_unparsed_name(sess->kctx, unp);
  
+  if (sess->is_admin == 0 &&
+      !krb5_principal_compare(sess->kctx,
+                              sess->princ,
+                              target)) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
+    prtmsg("Not authorized to abort");
+    goto freeall;
+  }
+
   prtmsg("Aborting in progress changes of %s", principal);
  
   if (sql_init(sess))
@@ -1968,9 +1881,14 @@ static void s_abortreq(struct rekey_session *sess, mb_t buf)
  dberrnomsg:
   send_error(sess, ERR_OTHER, "Server internal error (database failure)");
   goto freeall;
+ interr:
+  send_error(sess, ERR_OTHER, "Server internal error");
+  goto freeall;
  badpkt:
   send_error(sess, ERR_BADREQ, "Packet was corrupt or too short");
  freeall:  
+  if (target)
+    krb5_free_principal(sess->kctx, target);
   free(principal);
 }
 
@@ -1997,26 +1915,20 @@ static void s_finalize(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
-
-  if (sess->is_admin == 0) {
-    send_error(sess, ERR_AUTHZ, "Not authorized (you must be an administrator)");
-    return;
+  free_unparsed_name(sess->kctx, unp);
+  if (sess->is_admin == 0 &&
+      !krb5_principal_compare(sess->kctx,
+                              sess->princ,
+                              target)) {
+    send_error(sess, ERR_AUTHZ, "Not authorized (must authenticate as an administrator or the target)");
+    prtmsg("Not authorized to finalize");
+    goto freeall;
   }
-
 
   prtmsg("Immediate commit/finalize of %s", principal);
 
@@ -2091,20 +2003,12 @@ static void s_delprinc(struct rekey_session *sess, mb_t buf)
     goto interr;
   } 
   if (strcmp(unp, principal)) {
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-    krb5_xfree(unp);
-#else
-    krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+    free_unparsed_name(sess->kctx, unp);
     send_error(sess, ERR_BADREQ, "Bad principal name (it is not canonical; missing realm?)");
     prtmsg("Requested principal %s is not canonical", principal);
     goto freeall;
   }
-#ifdef KRB5_PRINCIPAL_HEIMDAL_STYLE
-  krb5_xfree(unp);
-#else
-  krb5_free_unparsed_name(sess->kctx, unp);
-#endif
+  free_unparsed_name(sess->kctx, unp);
 
   prtmsg("Delete principal %s", principal);
 
@@ -2177,6 +2081,18 @@ void run_session(int s) {
   }
   sess.ssl = do_ssl_accept(s);
   child_cleanup();
+
+  if (krb5_init_context(&sess.kctx))
+    fatal("krb5_init_context failed");
+  if (target_acl_path)
+    sess.target_acl = acl_load(&sess, target_acl_path);
+  else if (!access(REKEY_TARGET_ACL, F_OK))
+    sess.target_acl = acl_load(&sess, REKEY_TARGET_ACL);
+  else
+    sess.target_acl = acl_load_builtin(&sess, "<builtin target ACL>",
+                                       builtin_target_acl);
+
+  sess.db_lock = -1;
   sess.initialized=1;
   sess.state = REKEY_SESSION_LISTENING;
   for (;;) {

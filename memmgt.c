@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -96,7 +97,7 @@ struct mem_buffer *buf_alloc(size_t size) {
   if (size == 0)
     return (struct mem_buffer *)calloc(1, sizeof(struct mem_buffer));
 
-  for (i=0;i < 1; i++) {
+  for (i=0;i <= 1; i++) {
     for (cur=head,prev=NULL;cur;prev=cur,cur=cur->next) {
       if (cur->buffer.allocated >= size)
 	break;

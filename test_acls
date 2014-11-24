@@ -1,0 +1,180 @@
+#!/usr/bin/perl
+# Copyright (c) 2013 Carnegie Mellon University.  All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer. 
+#
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in
+#    the documentation and/or other materials provided with the
+#    distribution.
+#
+# 3. The name "Carnegie Mellon University" must not be used to
+#    endorse or promote products derived from this software without
+#    prior written permission. For permission or any other legal
+#    details, please contact  
+#      Office of Technology Transfer
+#      Carnegie Mellon University
+#      5000 Forbes Avenue
+#      Pittsburgh, PA  15213-3890
+#      (412) 268-4387, fax: (412) 268-7395
+#      tech-transfer@andrew.cmu.edu
+#
+# 4. Redistributions of any form whatsoever must retain the following
+#    acknowledgment:
+#    "This product includes software developed by Computing Services
+#     at Carnegie Mellon University (http://www.cmu.edu/computing/)."
+#
+# CARNEGIE MELLON UNIVERSITY DISCLAIMS ALL WARRANTIES WITH REGARD TO
+# THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS, IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY BE LIABLE
+# FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+# AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+# OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+use strict;
+use vars qw($TestFile @princs %fprincs $NS %pats $REALM);
+use vars qw($CLEAR $QUIET $count $pass $fail $lose);
+
+if ($ARGV[0] eq '-q') { $QUIET = 1; shift @ARGV }
+$REALM = '@REKEY.EXAMPLE';
+$TestFile = '/tmp/rekey-test-acl';
+$count = $pass = $fail = $lose = 0;
+$CLEAR = "\r" . (' ' x 78) . "\r";
+
+@princs = qw(
+  foo              zoo
+  foo/bar          zoo/bar
+  foo/bar/baz      zoo/bar/baz
+  foo/bar/baz/quux zoo/bar/baz/quux
+  foo/bar/xaz      zoo/bar/xaz
+  foo/bar/xaz/quux zoo/bar/xaz/quux
+  foo/yar          zoo/yar
+  foo/yar/baz      zoo/yar/baz
+  foo/yar/baz/quux zoo/yar/baz/quux
+  foo/yar/xaz      zoo/yar/xaz
+  foo/yar/xaz/quux zoo/yar/xaz/quux
+);
+
+%fprincs = (
+  'foo'         => 3,
+  'bar'         => 3,
+  'baz'         => 0,
+  'foo/bar'     => 0,
+  'foo/foo'     => 1,
+  'foo/bar/baz' => 0,
+);
+
+$NS = '[^/]*';
+%pats = (
+  '*'           => [ grep(m{^$NS$},         @princs) ],
+  '**'          => [ @princs,                        ],
+  '*/*'         => [ grep(m{^$NS/$NS$},     @princs) ],
+  '*/**'        => [ grep(m{/},             @princs) ],
+  '*/*/**'      => [ grep(m{/.*/},          @princs) ],
+  '*/*/baz'     => [ grep(m{^$NS/$NS/baz$}, @princs) ],
+  '*/bar'       => [ grep(m{^$NS/bar$},     @princs) ],
+  '*/bar/**'    => [ grep(m{^$NS/bar/},     @princs) ],
+  '*/bar/baz'   => [ grep(m{^$NS/bar/baz$}, @princs) ],
+  'foo'         => [ 'foo'                           ],
+  'foo/*'       => [ grep(m{^foo/$NS$},     @princs) ],
+  'foo/**'      => [ grep(m{^foo/},         @princs) ],
+  'foo/*/**'    => [ grep(m{^foo/$NS/},     @princs) ],
+  'foo/*/baz'   => [ grep(m{^foo/$NS/baz$}, @princs) ],
+  'foo/bar/*'   => [ grep(m{^foo/bar/$NS$}, @princs) ],
+  'foo/bar/**'  => [ grep(m{^foo/bar/},     @princs) ],
+  'foo/bar'     => [ 'foo/bar'                       ],
+  'foo/bar/baz' => [ 'foo/bar/baz'                   ],
+);
+
+sub doit (@) {
+  my($wanted, @args) = @_;
+  my($answer);
+
+  $count++;
+  $answer = system('./try_acl', @args);
+  if (!$answer || $answer == 99 << 8) {
+    if (!$answer == $wanted) {
+      printf("%4d %4d PASS\n", $wanted, !$answer) unless $QUIET;
+      $pass++;
+    } else {
+      printf("%4d %4d FAIL\n", $wanted, !$answer);
+      $fail++;
+    }
+  } else {
+    if ($answer < 0)       { print "$!\n"                                  }
+    elsif ($answer & 0x7f) { printf("Died on signal %d\n", $answer & 0x7f) }
+    else                   { printf("Exit %d\n", $answer >> 8)             }
+    $lose++;
+  }
+}
+
+print "Running pattern tests:\n";
+print "Pattern              Subject              Want  Got Result\n";
+print "==================== ==================== ==== ==== ======\n";
+foreach my $exact ('', 'e') {
+  my $ee = $exact ? 'E:' : '';
+  foreach my $neg ('', '!') {
+    next if $exact && $neg;
+    foreach my $pattern (sort keys %pats) {
+      my %wanted = map(($_ => 1), $exact ? ($pattern) : @{$pats{$pattern}});
+      foreach my $subject (sort @princs) {
+        my $wanted = $neg ? !$wanted{$subject} : $wanted{$subject};
+        print $CLEAR;
+        printf("%-20s %-20s ", $ee.$neg.$pattern, $subject);
+        doit($wanted, "s$exact", $neg.$pattern.$REALM, $subject.$REALM);
+      }
+    }
+  }
+}
+print "$CLEAR\n";
+
+print "Running builtin ACL tests:\n";
+print "Subject              Want  Got Result\n";
+print "==================== ==== ==== ======\n";
+foreach my $exact ('', 'e') {
+  my $ee = $exact ? 'E:' : '';
+  my $mask = $exact ? 2 : 1;
+  foreach my $subject (sort keys %fprincs) {
+    my $wanted = !!($fprincs{$subject} & $mask);
+    print $CLEAR;
+    printf("%-20s ", $ee.$subject);
+    doit($wanted, 'b'.$exact, $subject.$REALM);
+  }
+}
+print "$CLEAR\n";
+
+my $file_err = system('./try_acl', 'o', $TestFile);
+if ($file_err < 0) { print "try_acl: $!\n" }
+elsif ($file_err)  { print "try_acl: $file_err\n" }
+
+if ($file_err) {
+  print "Not running file ACL tests\n";
+} else {
+  print "Running file ACL tests:\n";
+  print "Subject              Want  Got Result\n";
+  print "==================== ==== ==== ======\n";
+  foreach my $exact ('', 'e') {
+    my $ee = $exact ? 'E:' : '';
+    my $mask = $exact ? 2 : 1;
+    foreach my $subject (sort keys %fprincs) {
+      my $wanted = !!($fprincs{$subject} & $mask);
+      print $CLEAR;
+      printf("%-20s ", $ee.$subject);
+      doit($wanted, 'f'.$exact, $TestFile, $subject.$REALM);
+    }
+  }
+  unlink($TestFile);
+}
+print "$CLEAR\n";
+
+print "Tests passed:    $pass\n" if $pass;
+print "Tests failed:    $fail\n" if $fail;
+print "Broken tests:    $lose\n" if $lose;
+print "Total tests run: $count\n";
+exit 1 if $fail || $lose;

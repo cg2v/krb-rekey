@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -165,9 +166,12 @@ krb5_keytab get_keytab(krb5_context ctx, char *keytab)
     keytab = ktdef;
   }
   
-  if (!strncmp(keytab, "FILE:", 5))
+  if (!strncmp(keytab, "FILE:", 5)) {
     keytab=&keytab[5];
+    goto is_file;
+  }
   if (!strchr(keytab, ':')) {
+is_file:
     ktname = malloc(8 + strlen(keytab));
     if (!ktname) {
       fatal("Memory allocation failed: %s", strerror(errno));
@@ -244,8 +248,14 @@ int get_keytab_targets(char *keytab, int *n, char ***out)
     for (i=0;i < cur; i++)
       if (!strcmp(name, princs[i]))
         break;
-    if (i < cur)
+    if (i < cur) {
+#if HAVE_DECL_KRB5_FREE_UNPARSED_NAME
+      krb5_free_unparsed_name(ctx, name);
+#else
+      krb5_xfree(name);
+#endif
       continue;
+    }
     if (i >= alloc) {
       alloc+=5;
       new=realloc(princs, alloc * sizeof(char *));
@@ -362,7 +372,7 @@ int sendrcv(SSL *ssl, int opcode, mb_t data) {
   return ret;
 }
 
-void c_auth(SSL *ssl, char *hostname) {
+void c_auth(SSL *ssl, char *hostname, char *svcname) {
  unsigned char *p;
      
  OM_uint32 maj, min, rflag;
@@ -379,13 +389,21 @@ void c_auth(SSL *ssl, char *hostname) {
      
  char namebuf[256];
      
- memset(namebuf, 0, 256);
- snprintf(namebuf, 255, "host@%s", hostname);
-     
- inname.value=namebuf;
- inname.length=strlen(namebuf);
-     
- maj = gss_import_name(&min, &inname, GSS_C_NT_HOSTBASED_SERVICE, &n);
+ if (svcname && *svcname && strcmp(svcname, "-")) {
+   inname.value=svcname;
+   inname.length=strlen(svcname);
+
+   maj = gss_import_name(&min, &inname, GSS_KRB5_NT_PRINCIPAL_NAME, &n);
+
+ } else {
+   memset(namebuf, 0, 256);
+   snprintf(namebuf, 255, "host@%s", hostname);
+
+   inname.value=namebuf;
+   inname.length=strlen(namebuf);
+
+   maj = gss_import_name(&min, &inname, GSS_C_NT_HOSTBASED_SERVICE, &n);
+ }
      
  if (GSS_ERROR(maj)) {
    prt_gss_error(GSS_C_NO_OID, maj, min);
@@ -396,11 +414,11 @@ void c_auth(SSL *ssl, char *hostname) {
  memset(&out, 0, sizeof(out));
  reqmech.length = gss_mech_krb5->length;
  reqmech.elements = malloc(reqmech.length);
- memcpy(reqmech.elements, gss_mech_krb5->elements, reqmech.length);
  if (!reqmech.elements) {
    c_close(ssl);
    fatal("Cannot allocate memory");
  }   
+ memcpy(reqmech.elements, gss_mech_krb5->elements, reqmech.length);
  do {
    /* can't use GSS_C_NO_OID with GSS_C_NO_CREDENTIAL on solaris */
    /* Should be using gss_indicate_mechs and iterating, but
@@ -736,7 +754,7 @@ static int scan_for_bad_keys(krb5_context ctx, mb_t buf) {
       } 
       if (krb5_enctype_valid(ctx, et) != ENCTYPE_VALID && et != 2) {
 	prtmsg("Principal %s has a new key with enctype %u, but this implementation does not support it", principal, et);
-	return 1;
+	goto out;
       }
       buf->cursor+=l;
       continue;
@@ -917,7 +935,7 @@ static int g_complete(void *vctx, char *principal, int kvno)
 }
 
 
-void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
+void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs, int quiet) {
   krb5_context ctx=NULL;
   krb5_keytab kt=NULL;
   mb_t buf;
@@ -951,7 +969,9 @@ void c_getkeys(SSL *ssl, char *keytab, int nprincs, char **princs) {
   }
   resp = sendrcv(ssl, OP_GETKEYS, buf);
   if (resp == RESP_ERR) {
-    prt_err_reply(buf);
+    reset_cursor(buf);
+    if (!quiet || (buf_getint(buf, &rc) || rc != ERR_NOKEYS))
+      prt_err_reply(buf);
     goto out;
   }
   if (resp == RESP_FATAL) {

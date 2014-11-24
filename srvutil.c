@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +48,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/syslog.h>
 #include <netdb.h>
@@ -241,6 +244,44 @@ void send_gss_token(struct rekey_session *sess, int opcode,
   buf_free(auth);
 }
 
+
+#if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
+
+int princ_ncomp_eq(krb5_context context, krb5_principal princ, int val)
+{
+  const char *s;
+  if (val <=0)
+    return 0;
+  if (!(s=krb5_principal_get_comp_string(context, princ, val-1)) ||
+      (strlen(s) == 0))
+    return 0;
+  if ((s=krb5_principal_get_comp_string(context, princ, val)) &&
+      (strlen(s) > 0))
+    return 0;
+  return 1;
+}
+
+#elif defined (KRB5_PRINCIPAL_MIT_STYLE)
+
+int compare_princ_comp(krb5_context context, krb5_principal princ, int n,
+                       char *ts)
+{
+  krb5_data *obj = krb5_princ_component(context, princ, n);
+  return obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length);
+}
+
+char *dup_comp_string(krb5_context context, krb5_principal princ, int n)
+{
+  krb5_data *obj = krb5_princ_component(context, princ, n);
+  char *ret;
+  ret=malloc(obj->length+1);
+  memcpy(ret, obj->data, obj->length);
+  ret[obj->length]=0;
+  return ret;
+}
+
+#endif
+
 int krealm_init(struct rekey_session *sess) {
   int rc;
   char *realm=NULL;  
@@ -290,21 +331,35 @@ int kadm_init(struct rekey_session *sess)
 int sql_init(struct rekey_session *sess) 
 {
   sqlite3 *dbh;
-  int rc, i;
+  int dblock, rc, i;
   char *sql, *errmsg;
 
   if (sess->dbh)
     return 0;
   
+  dblock = open(REKEY_DATABASE_LOCK, O_WRONLY | O_CREAT, 0644);
+  if (dblock < 0) {
+    prtmsg("Cannot create/open database lock: %s", strerror(errno));
+    return 1;
+  }
+
+  if (flock(dblock, LOCK_EX)) {
+    prtmsg("Cannot obtain database lock: %s", strerror(errno));
+    close(dblock);
+    return 1;
+  }
+
 #if SQLITE_VERSION_NUMBER >= 3005000
   rc = sqlite3_open_v2(REKEY_LOCAL_DATABASE, &dbh, SQLITE_OPEN_READWRITE, NULL);
   if (rc == SQLITE_OK) {
+    sess->db_lock = dblock;
     sess->dbh = dbh;
     return 0;
   }
   
   if (rc != SQLITE_ERROR && rc != SQLITE_CANTOPEN) {
     prtmsg("Cannot open database: %d", rc);
+    close(dblock);
     return 1;
   }
 
@@ -312,15 +367,25 @@ int sql_init(struct rekey_session *sess)
                        SQLITE_OPEN_CREATE, NULL);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
+    close(dblock);
     return 1;
   }
 #else
   rc = sqlite3_open(REKEY_LOCAL_DATABASE, &dbh);
   if (rc != SQLITE_OK) { 
     prtmsg("Cannot create/open database: %d", rc);
+    close(dblock);
     return 1;
   }
 #endif
+
+  rc = sqlite3_busy_timeout(dbh, 30000);
+  if (rc != SQLITE_OK) {
+    prtmsg("Failed setting database busy handler: %d", rc);
+    sqlite3_close(dbh);
+    close(dblock);
+    return 1;
+  }
     
 #if SQLITE_VERSION_NUMBER >= 3003007 /* need support for CREATE TRIGGER IF NOT EXIST */
   for (sql=sql_embeded_init[i=0]; sql;sql=sql_embeded_init[++i]) {
@@ -333,12 +398,14 @@ int sql_init(struct rekey_session *sess)
         prtmsg("SQL Initialization action %d failed: %d", i, rc);
       }
       sqlite3_close(dbh);
+      close(dblock);
       return 1;
     }
   }
 #else
 #warning Automatic database initialization not available
 #endif
+  sess->db_lock = dblock;
   sess->dbh = dbh;
   return 0;
 }

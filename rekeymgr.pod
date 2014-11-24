@@ -1,0 +1,171 @@
+=head1 NAME
+
+rekeymgr - Manage Kerberos principal rekeying
+
+=head1 SYNOPSIS
+
+rekeymgr [B<-k> I<keytab>]
+[B<-r> I<realm>] [B<-s> I<server>] [B<-P> I<serverprinc>]
+[B<-d>|B<-D>] [B<-A>] I<command> I<args>...
+
+=head1 DESCRIPTION
+
+B<rekeymgr> is used to manage automatic Kerberos principal rekeying.  
+The rekey process is coordinated by rekeyd(8), which generates new
+keys, tracks rekey operations in progress, and provides new keys to
+clients when appropriate.  Administrators use B<rekeymgr> to manage
+these operations.
+
+Additionally, B<rekeymgr>'s B<key> subcommand may be used by ordinary
+service principals to perform a safe one-shot rekey operation.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-k> I<keytab>
+
+Specifies the keytab into which downloaded keys should be stored,
+instead of the Kerberos default keytab.  This option is used only
+with the B<key> command.
+
+=item B<-r> I<realm>
+
+Specifies the realm in which rekeying is done.  This is currently
+used only to determine the default server name when B<-s> is not given.
+
+=item B<-s> I<server>
+
+Specifies the hostname of the rekey server.  The default is to
+form a hostname by prepending "rekey." to the realm name specified
+via the B<-r> option, or to the default realm if B<-r> is not given.
+
+=item B<-P> I<serverprinc>
+
+Specifies the Kerberos service principal name of the rekey server.
+If 'C<->' is given, the rekey server's host principal is used.
+The default is @def_rekey_service@
+
+=item B<-d>
+
+Instruct the server to generate only single-DES keys.  This option
+is used only with the B<start> and B<key> commands, and cannot be
+combined with B<-D>.
+
+=item B<-D>
+
+Instruct the server to generate only non-DES keys.  This option
+is used only with the B<start> and B<key> commands, and cannot be
+combined with B<-d>.
+
+=item B<-A>
+
+Instruct the server to generate keys compatible with older Kerberos
+implementations.  Currently, this means using only enctypes not newer
+than DES3-CBC-SHA1.
+
+=back
+
+=head1 COMMANDS
+
+=head2 B<start> I<principal> I<hostname>...
+
+Begin a new rekey cycle for I<principal>, distributing new keys to all of
+the listed hosts.  This command may be used only by an administrator.
+
+=head2 B<status> I<principal>
+
+Show the status of an active rekey cycle for I<principal>, if any.
+This lists all of the hosts to which the princpal's new keys will be
+distributed, along with an indication as to whether each host has yet
+downloaded the new key.  This command may be used only by an
+administrator.
+
+=head2 B<abort> I<principal>
+
+Abort an in-progress rekey cycle for I<principal>.  The temporary keys
+are discaded.  This command may be used by an administrator or by the
+target principal.
+
+=head2 B<finalize> I<principal>
+
+Finalize an in-progress rekey cycle for I<principal>.  This commits the
+temporary keys to the Kerberos database.  This operation can only be
+performed once all hosts have downloaded the new keys, and is generally
+needed only to force a retry when there has been a problem committing
+a change to the Kerberos database.  This command may be used by an
+administrator or by the target principal.
+
+=head2 B<delprinc> I<principal>
+
+Delete I<principal> from the Kerberos database.  This command may be
+used only by an administrator.
+
+=head2 B<key> I<principal>
+
+Perform a safe one-shot rekey of I<principal>.  A new key is generated,
+written to the keytab specified via the B<-k> option (or the Kerberos
+default keytab), and then stored to the Kerberos database.  This command
+is appropriate only when the key will be used only on a single host.
+It may be used by an administrator or by the target principal.
+
+=head1 CAVEATS
+
+Because the server stores and compares principal names as strings,
+the principal name arguments for most subcommands must be in canonical
+form, including the realm.  Failing to follow this rule will generally
+result in confusing errors.
+
+There is currently no way to tell the server to use specific enctypes,
+and B<rekeymgr> has no way to tell which enctypes may be supported by
+software using a given principal.  Therefore, administrators must take
+care in requesting the appropriate key-generation mode.
+
+=head1 SEE ALSO
+
+getnewkeys(8), age_keytab(8), rekeysrv(8)
+
+=head1 AUTHOR
+
+The rekey tools were written by Chaskiel Grundman.
+
+=head1 COPYRIGHT
+
+ Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer. 
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+
+ 3. The name "Carnegie Mellon University" must not be used to
+    endorse or promote products derived from this software without
+    prior written permission. For permission or any other legal
+    details, please contact  
+      Office of Technology Transfer
+      Carnegie Mellon University
+      5000 Forbes Avenue
+      Pittsburgh, PA  15213-3890
+      (412) 268-4387, fax: (412) 268-7395
+      tech-transfer@andrew.cmu.edu
+
+ 4. Redistributions of any form whatsoever must retain the following
+    acknowledgment:
+    "This product includes software developed by Computing Services
+     at Carnegie Mellon University (http://www.cmu.edu/computing/)."
+
+ CARNEGIE MELLON UNIVERSITY DISCLAIMS ALL WARRANTIES WITH REGARD TO
+ THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ AND FITNESS, IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY BE LIABLE
+ FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+ AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,15 +66,17 @@ int main(int argc, char **argv) {
   SSL *conn;
   char *realm=NULL;
   char *servername=NULL;
+  char *princname=REKEY_DEF_SERVICE;
   char *keytab=NULL;
   int optch;
   int allkeys=0;
   char *target=NULL;
   char **targets=NULL;
   int ntargets=0;
+  int quiet=0;
   
   
-  while ((optch = getopt(argc, argv, "k:r:s:ap:")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:ap:q")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -84,14 +87,20 @@ int main(int argc, char **argv) {
     case 's':
       servername = optarg;
       break;
+    case 'P':
+      princname = optarg;
+      break;
     case 'a':
       allkeys=1;
+      break;
+    case 'q':
+      quiet=1;
       break;
     case 'p':
       target = optarg;
       break;
     case '?':
-      fprintf(stderr, "Usage: getnewkeys [-k keytab] [-r realm] [-s hostname]\n [-a] [-p principalname]");
+      fprintf(stderr, "Usage: getnewkeys [-q] [-k keytab] [-r realm] [-s hostname] [-P serverprinc]\n [-a] [-p principalname]\n");
       exit(1);
     }
   }
@@ -109,16 +118,16 @@ int main(int argc, char **argv) {
   if (!servername)
     servername = get_server(realm);
   conn = c_connect(servername);
-  c_auth(conn, servername);
+  c_auth(conn, servername, princname);
 #if 0
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);
 #endif
   if (target) {
-    c_getkeys(conn, keytab, 1, &target);
+    c_getkeys(conn, keytab, 1, &target, quiet);
   } else {
     /* if allkeys, ntargets will be 0 */
-    c_getkeys(conn, keytab, ntargets, targets);
+    c_getkeys(conn, keytab, ntargets, targets, quiet);
   }
     
   c_close(conn);

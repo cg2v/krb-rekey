@@ -52,3 +52,10 @@
 /lib/netdb.h
 /lib/warn-on-use.h
 /lib/c++defs.h
+/age_keytab.8
+/getnewkeys.8
+/getnewkeys.8.in
+/rekeymgr.1
+/rekeymgr.1.in
+/rekeysrv.8
+/rekeysrv.8.in

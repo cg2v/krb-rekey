@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,6 +58,9 @@
 
 #include "rekeysrv-locl.h"
 
+char *target_acl_path = NULL;
+int force_compat_enctype = 0;
+
 void run_fg(int s, struct sockaddr *sa) {
   char addrstr[INET6_ADDRSTRLEN];
   if (sa->sa_family == AF_INET) {
@@ -102,12 +106,44 @@ static void sigdie(int sig) {
     unlink(pidfile);
   _exit(255);
 }
+
+static void parse_enctypes(char *arg)
+{
+  char *x = arg;
+  int i, count = 1;
+
+  while ((x = strchr(x, ','))) {
+    count++;
+    x++;
+  }
+
+  cfg_enctypes = malloc(sizeof(krb5_enctype) * (count + 1));
+  if (!cfg_enctypes) {
+    fprintf(stderr, "Out of memory parsing enctype list!\n");
+    exit(1);
+  }
+
+  for (i = 0; i < count && arg; arg = x) {
+    if ((x = strchr(arg, ',')))
+      *(x++) = 0;
+    if (!*arg) continue;
+    cfg_enctypes[i++] = atoi(arg);
+  }
+  cfg_enctypes[count] = ENCTYPE_NULL;
+}
+
 int main(int argc, char **argv) {
   int dofork=0;
   int inetd=0;
   int optch;
-  while ((optch=getopt(argc, argv, "idp:")) != -1) {
+  while ((optch=getopt(argc, argv, "a:cdip:E:T:")) != -1) {
     switch (optch) {
+    case 'a':
+      admin_arg(optarg);
+      break;
+    case 'c':
+      force_compat_enctype=1;
+      break;
     case 'd':
       dofork=1;
       break;
@@ -116,6 +152,12 @@ int main(int argc, char **argv) {
       break;
     case 'p':
       pidfile=optarg;
+      break;
+    case 'E':
+      parse_enctypes(optarg);
+      break;
+    case 'T':
+      target_acl_path=optarg;
       break;
     case '?':
       optind=0;
@@ -126,7 +168,15 @@ int main(int argc, char **argv) {
   }
   
   if (argc > optind) {
-    fprintf(stderr, "Usage: rekeysrv [-i] | [[-d] [-p pidfile path]]\n");
+    fprintf(stderr, "Usage: rekeysrv -i [-T targets]...\n");
+    fprintf(stderr, "       rekeysrv [-d] [-p pidfile] [-T targets]\n");
+    fprintf(stderr, "  -i          run under inetd\n");
+    fprintf(stderr, "  -d          run as a background daemon\n");
+    fprintf(stderr, "  -p file     PID file\n");
+    fprintf(stderr, "  -T file     ACL file listing permitted targets\n");
+    fprintf(stderr, "  -c          force old enctype compatibility\n");
+    fprintf(stderr, "  -E etypes   use only listed enctypes\n");
+    fprintf(stderr, "  -a       %s\n", admin_help_string);
     exit(1);
   }
   if (inetd && (dofork || pidfile)) {

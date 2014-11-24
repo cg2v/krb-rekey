@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -272,17 +273,27 @@ static size_t my_strnlen(char *s, size_t n)
 void prt_err_reply(mb_t resp) {
   unsigned int len, code;
   char *msg, *q;
+
   reset_cursor(resp);
   if (buf_getint(resp, &code)) {
     prtmsg("Malformed error reply (too short to contain code)");
     return;
   }
-  if (buf_getstring(resp, &msg, malloc)) {
+  if (buf_getint(resp, &len)) {
+    prtmsg("Malformed error reply (too short to contain length)");
+    return;
+  }
+  msg = malloc(len + 1);
+  if (!msg) {
+    prtmsg("Out of memory allocating space for error reply");
+    return;
+  }
+  if (buf_getdata(resp, msg, len)) {
     prtmsg("Remote error: %d", code);
     prtmsg("Malformed error reply (too short to contain message length)");
     return;
   }
-  len = strlen(msg);
+  msg[len] = 0;
   q = msg;
   while (q < &msg[len]) {
     prtmsg("Remote error: %s (%d)", q, code);

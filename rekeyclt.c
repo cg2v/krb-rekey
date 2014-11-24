@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2009 Carnegie Mellon University.  All rights reserved.
+ * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -64,13 +65,14 @@ int main(int argc, char **argv) {
   char *realm=NULL;
   char *targetname=NULL;
   char *servername=NULL;
+  char *princname=REKEY_DEF_SERVICE;
   char *keytab=NULL;
   char *cmd;
   char **hostnames;
   int flag=0;
   int optch;
   
-  while ((optch = getopt(argc, argv, "k:r:s:dDA")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:dDA")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -80,6 +82,9 @@ int main(int argc, char **argv) {
       break;
     case 's':
       servername = optarg;
+      break;
+    case 'P':
+      princname = optarg;
       break;
     case 'd':
       flag|=REQFLAG_DESONLY;
@@ -91,7 +96,7 @@ int main(int argc, char **argv) {
       flag|=REQFLAG_COMPAT_ENCTYPE;
       break;
     case '?':
-      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d|-D] [-A] command [args]\n");
+      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A] command [args]\n");
       exit(1);
     }
   }
@@ -99,7 +104,7 @@ int main(int argc, char **argv) {
   if (argc - optind < 1) {
     
   usage:
-    fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-d|-D] [-A] command [args]\n");
+    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A] command [args]\n");
     fprintf(stderr, "       rekeyclt start principalname hostname [hostname]...\n");
     fprintf(stderr, "       rekeyclt status principalname\n");
     fprintf(stderr, "       rekeyclt abort principalname\n");
@@ -117,7 +122,7 @@ int main(int argc, char **argv) {
   if (!servername)
     servername = get_server(realm);
   conn = c_connect(servername);
-  c_auth(conn, servername);
+  c_auth(conn, servername, princname);
 #if 0
   printf("Attach to remote server if required, then press return\n");
   getc(stdin);

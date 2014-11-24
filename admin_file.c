@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2008-2009, 2013 Carnegie Mellon University.
- * All rights reserved.
+ * Copyright (c) 2013 Carnegie Mellon University.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,65 +43,24 @@
 #include "config.h"
 #endif
 #include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <getopt.h>
-#include <openssl/ssl.h>
-#ifdef USE_GSSAPI_H
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif
 
-#include "memmgt.h"
-#include "protocol.h"
-#include "rekey-locl.h"
-#include "rekeyclt-locl.h"
+#define SESS_PRIVATE
+#include "rekeysrv-locl.h"
 
-int main(int argc, char **argv) {
-  SSL *conn;
-  char *keytab = "tmp.keytab";
-  char *servername = "rekey.andrew.cmu.edu";
-  char *princname = REKEY_DEF_SERVICE;
-  int optch;
-  int flag=0;
+static char *admin_acl_file = SYSCONFDIR "/rekey.acl";
 
-  while ((optch = getopt(argc, argv, "k:s:P:d")) != -1) {
-    switch (optch) {
-    case 'k':
-      keytab = optarg;
-      break;
-    case 's':
-      servername = optarg;
-      break;
-    case 'P':
-      princname = optarg;
-      break;
-    case 'd':
-      flag|=REQFLAG_DESONLY;
-      break;
-    case '?':
-      fprintf(stderr, "Usage: rekeytest [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d] [princ [hostname...] \n");
-      exit(1);
-    }
-  }
+char *admin_help_string = "admin ACL file";
 
-  ssl_startup();
+void admin_arg(char *arg)
+{
+  admin_acl_file = arg;
+}
 
-  conn=c_connect(servername);
-  printf("Attach to remote server if required, then press return\n");
-  getc(stdin);
-  c_auth(conn, servername, princname);
-  if (argc > 2)
-    c_newreq(conn, argv[1], flag, argc - 2, argv + 2);
-  else if (argc == 2)
-    c_status(conn, argv[1]);
-  else 
-    c_getkeys(conn, keytab, 0, NULL, 0);
-    
-  SSL_shutdown(conn);
-  SSL_free(conn);
-  ssl_cleanup();
-  return 0;
+
+int is_admin(struct rekey_session *sess)
+{
+  if (!sess->admin_data)
+    sess->admin_data = acl_load(sess, admin_acl_file);
+
+  return acl_check(sess, sess->admin_data, sess->princ, 1);
 }

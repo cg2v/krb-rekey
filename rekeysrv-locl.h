@@ -8,7 +8,6 @@
 #define NEED_SQLITE
 #endif
 
-#ifdef NEED_KRB5
 #ifdef HAVE_KRB5_H
 #include <krb5.h>
 #else
@@ -17,11 +16,22 @@
 #include "krb5_portability.h"
 #if defined(HAVE_DECL_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_DECL_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
+#define free_unparsed_name(c,n) krb5_xfree(n)
+extern int princ_ncomp_eq(krb5_context, krb5_principal, int);
+#define compare_princ_comp(c,p,n,s) \
+  (!strcmp(krb5_principal_get_comp_string(c,p,n), s))
+#define dup_comp_string(c,p,n) \
+  (strdup(krb5_principal_get_comp_string(c,p,n)))
+
 #elif defined (HAVE_KRB5_PRINC_REALM) && defined(HAVE_KRB5_PRINC_COMPONENT) && !defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_MIT_STYLE 1
+#define free_unparsed_name(c,n) krb5_free_unparsed_name(c,n)
+#define princ_ncomp_eq(c, p, v) (v == krb5_princ_size(c, p))
+extern int compare_princ_comp(krb5_context, krb5_principal, int, char *);
+extern char *dup_comp_string(krb5_context, krb5_principal, int);
+
 #else
 #error Cannot figure out how krb5_principal accessors work
-#endif
 #endif
 
 #ifdef NEED_KADM5
@@ -65,6 +75,7 @@ struct rekey_session {
   int state;
   SSL *ssl;
   krb5_context kctx;
+  struct ACL *target_acl;
   gss_ctx_id_t gctx;
   gss_OID mech;
   gss_name_t name;
@@ -74,9 +85,11 @@ struct rekey_session {
   int authstate;
   int is_admin;
   int is_host;
+  int db_lock;
   sqlite3 *dbh;
   char *realm;
   void *kadm_handle;
+  void *admin_data;
 };
 #define REKEY_SESSION_LISTENING 0
 #define REKEY_SESSION_SENDING 1
@@ -85,12 +98,23 @@ struct rekey_session {
 struct rekey_session;
 #endif
 
+<<<<<<< HEAD
+=======
+#define REKEY_TARGET_ACL SYSCONFDIR "/rekey.targets"
+>>>>>>> jhutz/master
 #define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
+#define REKEY_DATABASE_LOCK "/var/heimdal/rekeys.lock"
 
 struct gss_OID_desc_struct;
 struct gss_buffer_desc_struct;
 struct sockaddr;
 struct mem_buffer;
+struct ACL;
+
+extern char *admin_help_string;
+extern char *target_acl_path;
+extern int force_compat_enctype;
+extern krb5_enctype *cfg_enctypes;
 
 void child_cleanup(void) ;
 void ssl_startup(void);
@@ -112,7 +136,15 @@ int sql_commit_trans(struct rekey_session *);
 int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
+<<<<<<< HEAD
 int is_admin(const char *username); /* should be session, but then principal accessor functions would have to be generalized */
+=======
+void admin_arg(char *);
+int is_admin(struct rekey_session *);
+struct ACL *acl_load(struct rekey_session *, char *);
+struct ACL *acl_load_builtin(struct rekey_session *, char *, char **);
+int acl_check(struct rekey_session *, struct ACL *, krb5_principal, int);
+>>>>>>> jhutz/master
 
 void fatal(const char *, ...)
 #ifdef HAVE___ATTRIBUTE__
