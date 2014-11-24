@@ -98,10 +98,7 @@ struct rekey_session {
 struct rekey_session;
 #endif
 
-<<<<<<< HEAD
-=======
 #define REKEY_TARGET_ACL SYSCONFDIR "/rekey.targets"
->>>>>>> jhutz/master
 #define REKEY_LOCAL_DATABASE "/var/heimdal/rekeys"
 #define REKEY_DATABASE_LOCK "/var/heimdal/rekeys.lock"
 
@@ -136,15 +133,11 @@ int sql_commit_trans(struct rekey_session *);
 int sql_rollback_trans(struct rekey_session *);
 int krealm_init(struct rekey_session *);
 int kadm_init(struct rekey_session *);
-<<<<<<< HEAD
-int is_admin(const char *username); /* should be session, but then principal accessor functions would have to be generalized */
-=======
 void admin_arg(char *);
 int is_admin(struct rekey_session *);
 struct ACL *acl_load(struct rekey_session *, char *);
 struct ACL *acl_load_builtin(struct rekey_session *, char *, char **);
 int acl_check(struct rekey_session *, struct ACL *, krb5_principal, int);
->>>>>>> jhutz/master
 
 void fatal(const char *, ...)
 #ifdef HAVE___ATTRIBUTE__

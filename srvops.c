@@ -92,7 +92,6 @@ krb5_enctype *cfg_enctypes = std_enctypes;
 static void check_authz(struct rekey_session *sess) 
 {
   size_t rl;
-  char *username;
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
   const char  *princ_realm;
 #elif defined (KRB5_PRINCIPAL_MIT_STYLE)
@@ -1176,7 +1175,6 @@ static void s_newreq(struct rekey_session *sess, mb_t buf)
     goto freeall;
   
   dbaction=1;
-  no_send = 1;
   goto freeall;
  dberr:
   prtmsg("database error: %s", sqlite3_errmsg(sess->dbh));
