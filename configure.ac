@@ -32,7 +32,7 @@ AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
               [use kadmin client mode]),
               [use_kadm5_client=$enableval],
               [use_kadm5_client=no])
-AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=@<:@file|ldapgroups@:>@],
+AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=@<:@file|ldapgroups|ldapgroups-std@:>@],
             [select admin access control method]),
             [ADMIN_METHOD=$withval],[ADMIN_METHOD=file])
 AC_ARG_WITH(default-service-principal,
@@ -85,6 +85,13 @@ AC_MSG_ERROR([No sqlite library found])])
 if test "x$ADMIN_METHOD" = "xldapgroups" ; then
   AC_CHECK_LIB([groups], [groups_anyuser_in], [LIB_GROUPS=-lgroups], [
                 AC_MSG_ERROR([No ldap groups library found])])
+fi
+if test "x$ADMIN_METHOD" = "xldapgroups-std" ; then
+  AC_CHECK_LIB([ldap], [ldap_initialize], [LIB_GROUPS=-lldap], [
+                AC_MSG_ERROR([No ldap library found])])
+  dnl sasl library not needed - included by ldap
+  AC_CHECK_HEADERS([ldap.h sasl/sasl.h], [], [
+                AC_MSG_ERROR([LDAP or SASL headers missing])])
 fi
 
 AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
