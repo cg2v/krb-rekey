@@ -1,11 +1,12 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#include <alloca.h>
 #include <stdarg.h>
 #include <ldap.h>
 #include <errno.h>
 #include <sasl/sasl.h>
-#include <alloca.h>
+#include <openssl/ssl.h>
 
 #define SESS_PRIVATE
 #define NEED_KRB5
@@ -28,9 +29,24 @@ void admin_arg(char *arg)
   rc=ldap_set_option(ld,option,invalue); \
   if (rc!=LDAP_SUCCESS) \
   { \
-    prtmsg("ldap_set_option(" #option ") failed: %s",ldap_err2string(rc)); \
+    if (rc == LDAP_OPT_ERROR) \
+      prtmsg("ldap_set_option(" #option ") failed");	\
+    else \
+      prtmsg("ldap_set_option(" #option ") failed: %s",ldap_err2string(rc)); \
     goto freeall; \
   }
+
+#define LDAP_GET_OPTION(ld,option,outvalue) \
+  rc=ldap_get_option(ld,option,outvalue); \
+  if (rc!=LDAP_SUCCESS) \
+  { \
+    if (rc == LDAP_OPT_ERROR) \
+      prtmsg("ldap_get_option(" #option ") failed");	\
+    else \
+      prtmsg("ldap_get_option(" #option ") failed: %s",ldap_err2string(rc)); \
+    goto freeall; \
+  }
+
 #define aasprintf(fmt, ...) ({\
   int __len = 0;\
   char* __buffer;\
@@ -66,8 +82,12 @@ static int verify_single_result(LDAP *l, int always_log, char *reason, LDAPMessa
   if (erc != LDAP_SUCCESS) {
     prtmsg("Failed to %s (server response): %s%s%s", reason, ldap_err2string(erc),
 	   (errmsg?", ":""), (errmsg?errmsg:""));
+    if (errmsg)
+      ldap_memfree(errmsg);
     return 0;
   }
+  if (errmsg)
+    ldap_memfree(errmsg);
   num_entries=ldap_count_entries(l, messages);
   if (num_entries == 0) {
     if (always_log) 
@@ -80,6 +100,7 @@ static int verify_single_result(LDAP *l, int always_log, char *reason, LDAPMessa
   }
   return 1;
 }
+
 int is_admin(struct rekey_session *sess)
 {
   char *username=NULL;
@@ -88,6 +109,9 @@ int is_admin(struct rekey_session *sess)
   struct timeval tv;
   LDAPMessage *response=NULL;
   char *reason, *filter;
+#if !defined(LDAP_OPT_X_TLS_PROTOCOL_MIN)
+  SSL_CTX *sslctx;
+#endif
 
   if (!princ_ncomp_eq(sess->kctx, sess->princ, 2) ||
       !compare_princ_comp(sess->kctx, sess->princ, 1, "admin")) {
@@ -98,6 +122,24 @@ int is_admin(struct rekey_session *sess)
     prtmsg("Failed to extract username for admin check");
     goto freeall;
   }
+
+  LDAP_SET_OPTION(NULL, LDAP_OPT_X_TLS_REQUIRE_CERT, &ssl_hard);
+  LDAP_SET_OPTION(NULL, LDAP_OPT_X_TLS_CACERTDIR, "/etc/andy/ldapcerts");
+  LDAP_SET_OPTION(NULL, LDAP_OPT_X_TLS_CIPHER_SUITE, "HIGH:!ADH:!eNULL:-SSLv2");
+#if defined(LDAP_OPT_X_TLS_PROTOCOL_MIN)
+  v=LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
+  LDAP_SET_OPTION(NULL, LDAP_OPT_X_TLS_PROTOCOL_MIN, &v);
+#else
+  extern int ldap_pvt_tls_init();
+  extern int ldap_pvt_tls_init_def_ctx( int is_server );
+  ldap_pvt_tls_init();
+  ldap_pvt_tls_init_def_ctx(0);
+  LDAP_GET_OPTION(NULL, LDAP_OPT_X_TLS_CTX, &sslctx);
+  if (sslctx) {
+    SSL_CTX_set_options(sslctx, SSL_OP_NO_SSLv2);
+    SSL_CTX_set_options(sslctx, SSL_OP_NO_SSLv3);
+  }
+#endif
 
   errno=0;
   rc = ldap_initialize(&l, LDAP_URI);
@@ -113,15 +155,6 @@ int is_admin(struct rekey_session *sess)
   v=LDAP_VERSION3;
   LDAP_SET_OPTION(l, LDAP_OPT_PROTOCOL_VERSION, &v);
   LDAP_SET_OPTION(l, LDAP_OPT_X_TLS, &ssl_hard);
-  LDAP_SET_OPTION(l, LDAP_OPT_X_TLS_REQUIRE_CERT, &ssl_hard);
-#if defined(LDAP_OPT_X_TLS_PROTOCOL_MIN)
-  v=LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
-  LDAP_SET_OPTION(l, LDAP_OPT_X_TLS_PROTOCOL_MIN, &v);
-#else
-  /* LDAP_OPT_X_TLS_CTX? */
-#endif
-  LDAP_SET_OPTION(l, LDAP_OPT_X_TLS_CACERTDIR, "/etc/andy/ldapcerts");
-  LDAP_SET_OPTION(l, LDAP_OPT_X_TLS_CIPHER_SUITE, "HIGH:!ADH:!eNULL:-SSLv2");
 
   errno=0;
   rc = ldap_sasl_interactive_bind_s(l, NULL, "GSSAPI", NULL, NULL,
