@@ -22,7 +22,7 @@ AC_TYPE_SIZE_T
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([fcntl.h memory.h])
+AC_CHECK_HEADERS([fcntl.h getopt.h memory.h])
 AC_CHECK_FUNCS([daemon setsid setpgrp])
 AC_FUNC_SETPGRP
 # Checks for libraries.
