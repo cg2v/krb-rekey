@@ -67,6 +67,9 @@
 #endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#ifndef SSL_OP_NO_TICKET
+#define SSL_OP_NO_TICKET 0
+#endif
 
 #include "memmgt.h"
 #include "rekey-locl.h"

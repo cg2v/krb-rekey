@@ -60,6 +60,9 @@ void ssl_fatal(SSL *, int)
 #endif
 ;
 SSL *do_ssl_accept(int s);
+#ifndef SSL_OP_NO_TICKET
+#define SSL_OP_NO_TICKET 0
+#endif
 #endif
 
 #ifdef NEED_SQLITE
