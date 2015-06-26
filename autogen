@@ -1,15 +1,17 @@
 #!/bin/sh
 
 set -e
-
 autoreconf -i -f
 rm -rf autom4te.cache
 
-vers=`git describe --dirty 2>/dev/null`
+set +e
+vers="$1"
+[ -n "$vers" ] || vers=`git describe --dirty 2>/dev/null`
 [ -n "$vers" ] || vers=`git describe --dirty --tags 2>/dev/null`
 [ -n "$vers" ] || vers=`git describe --dirty --all 2>/dev/null`
 
-pod2man --stderr -r"$vers" -c'Rekey Tools' -s1 rekeymgr.pod > rekeymgr.1.in
-pod2man --stderr -r"$vers" -c'Rekey Tools' -s8 rekeysrv.pod > rekeysrv.8.in
-pod2man --stderr -r"$vers" -c'Rekey Tools' -s8 getnewkeys.pod > getnewkeys.8.in
-pod2man --stderr -r"$vers" -c'Rekey Tools' -s8 age_keytab.pod > age_keytab.8
+set -e
+pod2man ${vers:+-r"$vers"} -c'Rekey Tools' -s1 rekeymgr.pod > rekeymgr.1.in
+pod2man ${vers:+-r"$vers"} -c'Rekey Tools' -s8 rekeysrv.pod > rekeysrv.8.in
+pod2man ${vers:+-r"$vers"} -c'Rekey Tools' -s8 getnewkeys.pod > getnewkeys.8.in
+pod2man ${vers:+-r"$vers"} -c'Rekey Tools' -s8 age_keytab.pod > age_keytab.8
