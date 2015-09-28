@@ -17,7 +17,7 @@
 #define SESS_PRIVATE
 #define NEED_KRB5
 #include "rekeysrv-locl.h"
-#define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=groups,dc=cmu,dc=edu"
+#define REKEY_ADMIN_GROUP "CN=Community:Department:ComputingServices:UnixCoverage:Comp,ou=Groups,dc=cmu,dc=edu"
 #define LDAP_URI "ldaps://ldap.cmu.edu"
 #define LDAP_BASEDN "dc=cmu,dc=edu"
 #define NO_FILTER "(objectClass=*)"
