@@ -59,6 +59,8 @@ struct ACL {
   krb5_principal pattern;
 };
 
+static int pattern_match(krb5_context, char *, krb5_principal,
+           krb5_principal pattern) __attribute__((nonnull (1, 2, 3, 4)));
 #if defined(KRB5_PRINCIPAL_HEIMDAL_STYLE)
 
 /* Returns 1 iff subject matches pattern, component-wise */
