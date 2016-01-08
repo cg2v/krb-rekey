@@ -25,9 +25,11 @@
 
 %if 0%{?sles_version:1}
 %define relsuffix sles%{sles_version}
+%define breqs pkg-config
 %else
 %if 0%{?rhel:1}
 %define relsuffix EL%{rhel}
+%define breqs pkgconfig
 %endif
 %endif
 
@@ -38,7 +40,7 @@ Group: System/Management
 Version: %{vers}
 Source: %{name}-%{vers}.tar.gz
 Release: 1%{?relsuffix:.%{relsuffix}}
-BuildRequires: autoconf, automake, krb5-devel, pkg-config, perl
+BuildRequires: autoconf, automake, krb5-devel, perl, %{breqs}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 
 
