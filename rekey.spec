@@ -21,7 +21,7 @@
 # any improvements or extensions that they make and grant Carnegie Mellon
 # the rights to redistribute these changes.
 
-%define vers 006
+%define vers 006a
 
 %if 0%{?sles_version:1}
 %define relsuffix sles%{sles_version}
