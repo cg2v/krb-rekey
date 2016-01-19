@@ -37,7 +37,7 @@
 # AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
 # OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-%define vers 006a
+%define vers 1.0
 
 %if 0%{?sles_version:1}
 %define relsuffix sles%{sles_version}
@@ -53,6 +53,7 @@
 Name: rekey
 Summary: Automatic Kerberos rekey management
 Group: System/Management
+Epoch: 1
 Version: %{vers}
 Source: %{name}-%{vers}.tar.gz
 Release: 1%{?relsuffix:.%{relsuffix}}
