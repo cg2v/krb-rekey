@@ -1,25 +1,41 @@
-# Copyright (c) 2015 Carnegie Mellon University
-# All Rights Reserved.
-# 
-# Permission to use, copy, modify and distribute this software and its
-# documentation is hereby granted, provided that both the copyright
-# notice and this permission notice appear in all copies of the
-# software, derivative works or modified versions, and any portions
-# thereof, and that both notices appear in supporting documentation.
+# Copyright (c) 2015 Carnegie Mellon University.
+# All rights reserved.
 #
-# CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
-# CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
-# ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-# Carnegie Mellon requests users of this software to return to
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer. 
 #
-#  Software Distribution Coordinator  or  Software_Distribution@CS.CMU.EDU
-#  School of Computer Science
-#  Carnegie Mellon University
-#  Pittsburgh PA 15213-3890
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in
+#    the documentation and/or other materials provided with the
+#    distribution.
 #
-# any improvements or extensions that they make and grant Carnegie Mellon
-# the rights to redistribute these changes.
+# 3. The name "Carnegie Mellon University" must not be used to
+#    endorse or promote products derived from this software without
+#    prior written permission. For permission or any other legal
+#    details, please contact  
+#      Office of Technology Transfer
+#      Carnegie Mellon University
+#      5000 Forbes Avenue
+#      Pittsburgh, PA  15213-3890
+#      (412) 268-4387, fax: (412) 268-7395
+#      tech-transfer@andrew.cmu.edu
+#
+# 4. Redistributions of any form whatsoever must retain the following
+#    acknowledgment:
+#    "This product includes software developed by Computing Services
+#     at Carnegie Mellon University (http://www.cmu.edu/computing/)."
+#
+# CARNEGIE MELLON UNIVERSITY DISCLAIMS ALL WARRANTIES WITH REGARD TO
+# THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS, IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY BE LIABLE
+# FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+# AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+# OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 %define vers 006a
 
@@ -44,8 +60,8 @@ BuildRequires: autoconf, automake, krb5-devel, perl, %{breqs}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 
 
-License: CMUCS
-Vendor: Carnegie Mellon SCS Facilities
+License: CMU
+Vendor: Carnegie Mellon University
 Packager: Facilities Help <help+@cs.cmu.edu>
 %if 0%{?sles_version:1}
 Distribution: SUSE Linux Enterprise %{sles_version}
