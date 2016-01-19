@@ -14,7 +14,6 @@
 #include <krb5/krb5.h>
 #endif
 #include "krb5_portability.h"
-
 #if defined(HAVE_DECL_KRB5_PRINCIPAL_GET_REALM) && defined(HAVE_DECL_KRB5_PRINCIPAL_GET_COMP_STRING) && defined(HAVE_KRB5_REALM)
 #define KRB5_PRINCIPAL_HEIMDAL_STYLE 1
 #define free_unparsed_name(c,n) krb5_xfree(n)
@@ -61,6 +60,9 @@ void ssl_fatal(SSL *, int)
 #endif
 ;
 SSL *do_ssl_accept(int s);
+#ifndef SSL_OP_NO_TICKET
+#define SSL_OP_NO_TICKET 0
+#endif
 #endif
 
 #ifdef NEED_SQLITE

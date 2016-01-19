@@ -103,6 +103,12 @@ Specifies the distinguished name of an LDAP group whose members are
 considered administrators.  The default is
 C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu>.
 
+=for man .\"<<<===SECT-ADMIN-ldapgroups-std===>>>
+
+Specifies the distinguished name of an LDAP group whose members are
+considered administrators.  The default is
+C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=groups,dc=cmu,dc=edu>.
+
 =for man .\"<<<===SECT-ZZZ===>>>
 
 Administrators are able to start, finalize, and abort rekey operations

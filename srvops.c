@@ -88,7 +88,6 @@ static krb5_enctype std_enctypes[] = {
 };
 krb5_enctype *cfg_enctypes = std_enctypes;
 
-
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {

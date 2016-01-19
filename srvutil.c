@@ -267,6 +267,8 @@ int compare_princ_comp(krb5_context context, krb5_principal princ, int n,
                        char *ts)
 {
   krb5_data *obj = krb5_princ_component(context, princ, n);
+  if (obj == NULL)
+     return 0;
   return obj->length == strlen(ts) && !strncmp(obj->data, ts, obj->length);
 }
 
@@ -274,6 +276,8 @@ char *dup_comp_string(krb5_context context, krb5_principal princ, int n)
 {
   krb5_data *obj = krb5_princ_component(context, princ, n);
   char *ret;
+  if (obj == NULL)
+     return NULL;
   ret=malloc(obj->length+1);
   memcpy(ret, obj->data, obj->length);
   ret[obj->length]=0;
