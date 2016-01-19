@@ -22,7 +22,7 @@ AC_TYPE_SIZE_T
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([fcntl.h memory.h])
+AC_CHECK_HEADERS([fcntl.h getopt.h memory.h])
 AC_CHECK_FUNCS([daemon setsid setpgrp])
 AC_FUNC_SETPGRP
 # Checks for libraries.
@@ -58,6 +58,8 @@ if test "X$LIB_GSS" = "X"; then
 fi
 LIB_KRB5=`$KRB5CONF --libs`
 AC_SUBST([LIB_KRB5])
+AC_CHECK_LIB([asn1], [decode_Ticket], [LIB_ASN1=-lasn1])
+AC_SUBST([LIB_ASN1])
 AC_CHECK_LIB([crypto], [ERR_load_crypto_strings], [LIB_CRYPTO=-lcrypto])
 save_LIBS="$LIBS"
 LIBS="$LIB_CRYPTO $LIBS"

@@ -47,7 +47,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#ifdef HAVE_GETOPT_H
 #include <getopt.h>
+#endif
 #include <openssl/ssl.h>
 #ifdef USE_GSSAPI_H
 #include <gssapi.h>
