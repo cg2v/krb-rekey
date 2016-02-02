@@ -41,11 +41,11 @@
 
 %if 0%{?sles_version:1}
 %define relsuffix sles%{sles_version}
-%define breqs pkg-config
+%define breqs pkg-config, libopenssl-devel
 %else
 %if 0%{?rhel:1}
 %define relsuffix EL%{rhel}
-%define breqs pkgconfig
+%define breqs pkgconfig, openssl-devel
 %endif
 %endif
 
