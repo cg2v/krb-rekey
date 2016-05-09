@@ -58,8 +58,11 @@ if test "X$LIB_GSS" = "X"; then
 fi
 LIB_KRB5=`$KRB5CONF --libs`
 AC_SUBST([LIB_KRB5])
+save_LIBS="$LIBS"
+LIBS="$LIB_KRB5 $LIBS"
 AC_CHECK_LIB([asn1], [decode_Ticket], [LIB_ASN1=-lasn1])
 AC_SUBST([LIB_ASN1])
+LIBS="$save_LIBS"
 AC_CHECK_LIB([crypto], [ERR_load_crypto_strings], [LIB_CRYPTO=-lcrypto])
 save_LIBS="$LIBS"
 LIBS="$LIB_CRYPTO $LIBS"
