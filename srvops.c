@@ -2078,7 +2078,7 @@ void run_session(int s) {
     fatal("Cannot allocate memory: %s", strerror(errno));
   }
   sess.ssl = do_ssl_accept(s);
-  child_cleanup();
+  child_cleanup_ssl();
 
   if (krb5_init_context(&sess.kctx))
     fatal("krb5_init_context failed");
