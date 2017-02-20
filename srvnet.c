@@ -217,13 +217,17 @@ SSL *do_ssl_accept(int s) {
   return ret;
 }
 
-void child_cleanup(void) 
+void child_cleanup_sockets(void) 
 {
   int i;
   for (i=0;i<nlfds;i++) {
     close(listenfds[i]);
     listenfds[i]=-1;
   }
+}
+
+void child_cleanup_ssl(void) 
+{
   if (sslctx)
     SSL_CTX_free(sslctx);
   sslctx=NULL;

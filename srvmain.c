@@ -84,6 +84,7 @@ void run_fg(int s, struct sockaddr *sa) {
   } else {
     syslog(LOG_INFO, "Connection from unknown address type %d", sa->sa_family);
   }
+  child_cleanup_sockets();
   run_session(s);
   exit(0);
 }

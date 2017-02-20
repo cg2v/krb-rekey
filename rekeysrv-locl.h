@@ -116,7 +116,8 @@ extern char *target_acl_path;
 extern int force_compat_enctype;
 extern krb5_enctype *cfg_enctypes;
 
-void child_cleanup(void) ;
+void child_cleanup_sockets(void);
+void child_cleanup_ssl(void);
 void ssl_startup(void);
 void ssl_cleanup(void);
 void net_startup(void);
