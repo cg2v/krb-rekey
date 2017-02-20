@@ -166,7 +166,8 @@ void net_startup(void) {
       setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on));
     }
 #endif
-     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
     
     if (bind(s, p->ai_addr, p->ai_addrlen)) {
       close(s);
