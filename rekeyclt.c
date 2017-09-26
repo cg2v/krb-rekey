@@ -63,6 +63,9 @@
 #include "rekeyclt-locl.h"
 #include "protocol.h"
 
+#include <krb5.h>
+#include "krb5_portability.h"
+
 int main(int argc, char **argv) {
   SSL *conn;
   char *realm=NULL;
@@ -102,6 +105,22 @@ int main(int argc, char **argv) {
       exit(1);
     }
   }
+
+#if defined(BROKEN_ENCTYPE_VALIDITY) && !defined(HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96) && \
+  !defined(HAVE_DECL_ENCTYPE_AES256_CTS_HMAC_SHA1_96)
+  /* assume an old implementation */
+  flag|=REQFLAG_COMPAT_ENCTYPE;
+#else
+  {
+     krb5_context *ctx;
+     if (krb5_init_context(&ctx) == 0) {
+       if (krb5_enctype_valid(ctx, 17) != ENCTYPE_VALID &&
+           krb5_enctype_valid(ctx, 18) != ENCTYPE_VALID)
+         flag|=REQFLAG_COMPAT_ENCTYPE;
+       krb5_free_context(&ctx);
+     }
+  }
+#endif
   cmd = argv[optind++];
   if (argc - optind < 1) {
     
