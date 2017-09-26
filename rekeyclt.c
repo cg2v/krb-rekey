@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
   char *keytab=NULL;
   char *cmd;
   char **hostnames;
-  int flag=0;
+  int flag=REQFLAG_NODES;
   int optch;
   
   while ((optch = getopt(argc, argv, "k:r:s:P:dDA")) != -1) {
@@ -91,9 +91,8 @@ int main(int argc, char **argv) {
       break;
     case 'd':
       flag|=REQFLAG_DESONLY;
-      break;
     case 'D':
-      flag|=REQFLAG_NODES;
+      flag &= ~REQFLAG_NODES;
       break;
     case 'A':
       flag|=REQFLAG_COMPAT_ENCTYPE;
@@ -116,11 +115,6 @@ int main(int argc, char **argv) {
     exit(1);
   }
   targetname=argv[optind++];
-  if ((flag & (REQFLAG_DESONLY|REQFLAG_NODES)) 
-      == (REQFLAG_DESONLY|REQFLAG_NODES)) {
-    fprintf(stderr, "Cannot use both -d (des only) and -D (no des) flags\n");
-    exit(1);
-  }
   ssl_startup();
   if (!servername)
     servername = get_server(realm);
