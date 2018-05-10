@@ -83,6 +83,7 @@ static DH *get_dh(SSL *ssl, int is_export, int keysize) {
 }
 
 #ifndef OPENSSL_NO_EC
+#if OPENSSL_VERSION_NUMBER < 0x1000020fL
 static EC_KEY *get_ecdh(SSL *ssl, int is_export, int keysize) {
   EC_KEY *ret;
   if (is_export || keysize < 512 || keysize > 7680)
@@ -92,6 +93,8 @@ static EC_KEY *get_ecdh(SSL *ssl, int is_export, int keysize) {
   return ret;
 }
 #endif
+#endif
+
 void ssl_startup(void) {
   int rc;
   SSL_library_init();
@@ -108,7 +111,13 @@ void ssl_startup(void) {
   SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_OFF);
   SSL_CTX_set_tmp_dh_callback(sslctx, get_dh);
 #ifndef OPENSSL_NO_EC
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL
+#if OPENSSL_VERSION_NUMBER > 0x1000020fL
+  SSL_CTX_set_ecdh_auto(sslctx, 1);
+#else
   SSL_CTX_set_tmp_ecdh_callback(sslctx, get_ecdh);
+#endif
+#endif
 #endif
 }
 
