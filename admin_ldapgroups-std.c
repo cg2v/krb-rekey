@@ -145,7 +145,7 @@ int is_admin(struct rekey_session *sess)
   char *ldap_pwfile, *ldap_cacertdir;
   char ldap_pwbuf[257];
 #ifdef HAVE_KRB5_REALM
-  krb5_realm *realm;
+  krb5_realm realm;
 #else
   krb5_data rdata;
   krb5_data *realm = &rdata;
