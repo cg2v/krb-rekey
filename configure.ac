@@ -63,14 +63,12 @@ LIBS="$LIB_KRB5 $LIBS"
 AC_CHECK_LIB([asn1], [decode_Ticket], [LIB_ASN1=-lasn1])
 AC_SUBST([LIB_ASN1])
 LIBS="$save_LIBS"
-AC_CHECK_LIB([crypto], [ERR_load_crypto_strings], [LIB_CRYPTO=-lcrypto])
+
+PKG_CHECK_MODULES([SSL], [openssl])
 save_LIBS="$LIBS"
-LIBS="$LIB_CRYPTO $LIBS"
-AC_CHECK_FUNCS([ERR_print_errors_cb CRYPTO_cleanup_all_ex_data])
+LIBS="$SSL_LIBS $LIBS"
+AC_CHECK_FUNCS([ERR_load_crypto_strings ERR_print_errors_cb CRYPTO_cleanup_all_ex_data])
 LIBS="$save_LIBS"
-AC_CHECK_LIB([ssl], [SSL_library_init], [LIB_SSL="-lssl $LIB_CRYPTO"], [
-AC_SUBST([LIB_SSL])
-AC_MSG_ERROR([No openssl library found])])
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
 
 LIB_SQLITE3=

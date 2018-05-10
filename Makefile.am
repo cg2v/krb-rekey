@@ -10,18 +10,18 @@ BUILT_SOURCES=sqlinit.h dhp7680.h
 CLEANFILES = sqlinit.h dhp7680.h
 CLIENT_SOURCES=cltlib.c rekeylib.c memmgt.c memmgt.h  protocol.h  rekeyclt-locl.h  rekey-locl.h krb5_portability.h
 rekeymgr_SOURCES=rekeyclt.c $(CLIENT_SOURCES)
-rekeymgr_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
+rekeymgr_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(SSL_LIBS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
 getnewkeys_SOURCES=getnewkeys.c $(CLIENT_SOURCES)
-getnewkeys_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
+getnewkeys_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(SSL_LIBS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
 rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
-rekeytest_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5)  $(LIB_SSL) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
+rekeytest_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5)  $(SSL_LIBS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
 rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c acl.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp7680.h
 EXTRA_rekeysrv_SOURCES=admin_ldapgroups.c admin_file.c admin_ldapgroups-std.c
-rekeysrv_LDADD=admin_$(ADMIN_METHOD).$(OBJEXT) $(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(INET_NTOP_LIB) $(LIBSOCKET)
+rekeysrv_LDADD=admin_$(ADMIN_METHOD).$(OBJEXT) $(LDADD) $(LIB_GSS) $(SSL_LIBS) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(INET_NTOP_LIB) $(LIBSOCKET)
 age_keytab_SOURCES=age_keytab.c krb5_portability.h
 age_keytab_LDADD=$(LDADD) $(LIB_KRB5) $(LIB_ASN1)
 try_acl_SOURCES=try_acl.c acl.c rekeylib.c memmgt.c memmgt.h rekey-locl.h rekeysrv-locl.h
-try_acl_LDADD=$(LDADD) $(LIB_GSS) $(LIB_SSL) $(LIB_KRB5)
+try_acl_LDADD=$(LDADD) $(LIB_GSS) $(SSL_LIBS) $(LIB_KRB5)
 
 %.h: %.pem
 	openssl dhparam -C -noout -in $< | sed 's/^DH \*get_dh/static DH *get_dh/' > $@
