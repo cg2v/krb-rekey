@@ -112,12 +112,12 @@ int main(int argc, char **argv) {
   flag|=REQFLAG_COMPAT_ENCTYPE;
 #else
   {
-     krb5_context *ctx;
+     krb5_context ctx;
      if (krb5_init_context(&ctx) == 0) {
        if (krb5_enctype_valid(ctx, 17) != ENCTYPE_VALID &&
            krb5_enctype_valid(ctx, 18) != ENCTYPE_VALID)
          flag|=REQFLAG_COMPAT_ENCTYPE;
-       krb5_free_context(&ctx);
+       krb5_free_context(ctx);
      }
   }
 #endif

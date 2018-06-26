@@ -443,8 +443,8 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t
     goto memerr;
   rc = sqlite3_prepare(sess->dbh,"SELECT enctype, key from keys where principal=?",
 		       -1, &st, NULL);
-  if (rc != SQLITE_OK)
-    goto dberr;
+    if (rc != SQLITE_OK)
+      goto dberr;
   
     rc = sqlite3_bind_int64(st, 1, principal);
     if (rc != SQLITE_OK)
@@ -747,6 +747,7 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
       free(Z_keydata(&k[i]));
 #endif
     }
+    free(k);
   }
   if (sess->kadm_handle)
     kadm5_destroy(sess->kadm_handle);

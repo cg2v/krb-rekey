@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
 
   ssl_startup();
   if (inetd) {
-    struct sockaddr_storage ss;
+    struct sockaddr_storage ss ={0};
     struct sockaddr *sa = (struct sockaddr *)&ss;
     int r;
     socklen_t sl=sizeof(struct sockaddr_storage);
