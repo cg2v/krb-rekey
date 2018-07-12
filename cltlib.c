@@ -96,9 +96,12 @@ void ssl_startup(void) {
      rc=SSL_CTX_set_cipher_list(sslctx, "aNULL:-eNULL:-EXPORT:-LOW:-MD5:@STRENGTH");
      if (rc == 0)
        ssl_fatal(NULL, 0);
+#if OPENSSL_VERSION_NUMBER >= 0x1010000fL
+     // allow anonymous ciphersuites
+     SSL_CTX_set_security_level(sslctx, 0);
+#endif
      SSL_CTX_set_options(sslctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3|SSL_OP_NO_TICKET);
      SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_OFF);
-
 }
 
 void ssl_cleanup(void) {
