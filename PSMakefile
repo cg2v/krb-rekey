@@ -10,7 +10,7 @@
 
 use PSMake 2.0;
 
-PSMake::setup(1);
+PSMake::setup(2, package=>'rekey');
 if ($::SysName =~ /_f/) {
   # Ugh; configure will find /usr/include/gssapi/gssapi.h and decide
   # that's the GSS-API we're using, which is totally wrong.
