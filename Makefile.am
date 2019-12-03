@@ -15,9 +15,11 @@ getnewkeys_SOURCES=getnewkeys.c $(CLIENT_SOURCES)
 getnewkeys_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5) $(LIB_COM_ERR) $(SSL_LIBS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
 rekeytest_SOURCES=rekeytest.c $(CLIENT_SOURCES)
 rekeytest_LDADD=$(LDADD) $(LIB_GSS) $(LIB_KRB5)  $(SSL_LIBS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(LIBSOCKET)
-rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c acl.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp7680.h
-EXTRA_rekeysrv_SOURCES=admin_file.c admin_ldapgroups-std.c
-rekeysrv_LDADD=admin_$(ADMIN_METHOD).$(OBJEXT) $(LDADD) $(LIB_GSS) $(SSL_LIBS) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_GROUPS) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(INET_NTOP_LIB) $(LIBSOCKET)
+rekeysrv_SOURCES=srvmain.c srvnet.c srvops.c admin_file.c acl.c srvutil.c rekeylib.c memmgt.c memmgt.h  protocol.h rekey-locl.h  rekeysrv-locl.h sqlinit.h dhp7680.h
+if LDAP_GROUPS
+rekeysrv_SOURCES+=admin_ldapgroups-std.c
+endif
+rekeysrv_LDADD=$(LDADD) $(LIB_GSS) $(SSL_LIBS) $(LIB_KADMS) $(LIB_KRB5) $(LIB_SQLITE3) $(LIB_LDAP) $(GETADDRINFO_LIB) $(HOSTENT_LIB) $(SERVENT_LIB) $(INET_NTOP_LIB) $(LIBSOCKET)
 age_keytab_SOURCES=age_keytab.c krb5_portability.h
 age_keytab_LDADD=$(LDADD) $(LIB_KRB5) $(LIB_ASN1)
 try_acl_SOURCES=try_acl.c acl.c rekeylib.c memmgt.c memmgt.h rekey-locl.h rekeysrv-locl.h
@@ -33,7 +35,10 @@ AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib $(KRB_INC_FLAGS) \
               -DSYSCONFDIR='"$(sysconfdir)"'
 LDADD = lib/libgnu.a
 
-KEEP_MAN_SECTS=ADMIN-$(ADMIN_METHOD)
+KEEP_MAN_SECTS=
+if LDAP_GROUPS
+KEEP_MAN_SECTS+=ADMIN-ldapgroups-std
+endif
 sub_drs = s%\(\\f(CW\)*\@def_rekey_service\(\\fR\)*\@%$(def_rekey_service)%
 sub_etc = s%\(\\f(CI\)*\@sysconfdir\(\\fI\)*\@%$(sysconfdir)%
 keep_sect = /<<<===SECT-\($(KEEP_MAN_SECTS)\)===>>>/,/<<<===SECT-.*===>>>/p

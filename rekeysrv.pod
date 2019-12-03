@@ -92,8 +92,6 @@ key will automatically be used for DES-CBC-MD4 and DES-CBC-MD5 as well.
 
 =head1 ADMINISTRATORS
 
-=for man .\"<<<===SECT-ADMIN-file===>>>
-
 Administrators are enumerated in the file F<@sysconfdir@/rekey.acl>, which
 is an ACL file in the format described under L</ACCESS CONTROL FILES> below.
 A client is considered an administrator if it matches the ACL.
@@ -181,13 +179,9 @@ there is no matching entry, then access is denied; that is, the subject
 does not match the ACL.  Otherwise, the subject is considered to match
 the ACL, and access is granted.
 
-=for man \."<<<===SECT-ADMIN-file===>>>
-
 When an ACL file is used as an admin ACL, matching is done by exact
 comparison; an ACL entry matches only if the principal in the ACL file
 is the same as the subject principal.
-
-=for man \."<<<===SECT-ZZZ===>>>
 
 When an ACL file is used to determine valid targets, the principal names
 in the ACL file are treated as patterns, which are matched component-wise

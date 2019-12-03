@@ -49,7 +49,7 @@
 
 static char *admin_acl_file = SYSCONFDIR "/rekey.acl";
 
-int is_admin(struct rekey_session *sess)
+int is_admin_from_file(struct rekey_session *sess)
 {
   if (!sess->admin_data)
     sess->admin_data = acl_load(sess, admin_acl_file);

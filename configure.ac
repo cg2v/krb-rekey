@@ -32,9 +32,8 @@ AC_ARG_ENABLE(kadm5-client, AS_HELP_STRING([--enable-kadm5-client],
               [use kadmin client mode]),
               [use_kadm5_client=$enableval],
               [use_kadm5_client=no])
-AC_ARG_WITH(admin-method, AS_HELP_STRING([--with-admin-method=@<:@file|ldapgroups-std@:>@],
-            [select admin access control method]),
-            [ADMIN_METHOD=$withval],[ADMIN_METHOD=file])
+AC_ARG_WITH(ldap, AS_HELP_STRING([--with-ldap], [support LDAP for admin ACL]),
+            [], [with_ldap=check])
 AC_ARG_WITH(default-service-principal,
             AS_HELP_STRING([--with-default-service-principal=princ],
                            [default Kerberos principal for server]),
@@ -72,7 +71,7 @@ LIBS="$save_LIBS"
 AC_DEFINE([OPENSSL_NO_KRB5], [], [Prevent openssl headers from trying to import kerberos headers])
 
 LIB_SQLITE3=
-LIB_GROUPS=
+LIB_LDAP=
 LIB_KADMS=
 
 if test "$build_server" = "yes"; then
@@ -82,24 +81,38 @@ if test "$build_server" = "yes"; then
     LIB_KADMS=`$KRB5CONF --libs kadm-server`
   fi
 
-AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
-AC_MSG_ERROR([No sqlite library found])])
-
-if test "x$ADMIN_METHOD" = "xldapgroups-std" ; then
-  AC_CHECK_LIB([ldap], [ldap_initialize], [LIB_GROUPS=-lldap], [
-                AC_MSG_ERROR([No ldap library found])])
+  AC_CHECK_LIB([sqlite3], [sqlite3_open], [LIB_SQLITE3=-lsqlite3],[
+  AC_MSG_ERROR([No sqlite library found])])
+  
+  if test "x$with_ldap" != xno; then
+    AC_CHECK_LIB([ldap], [ldap_initialize], [], [
+      if test "x$with_ldap" != xcheck ; then 
+        AC_MSG_ERROR ([No ldap library found])
+      else
+        with_ldap=no
+      fi])
+  fi
   dnl sasl library not needed - included by ldap
-  AC_CHECK_HEADERS([ldap.h sasl/sasl.h], [], [
-                AC_MSG_ERROR([LDAP or SASL headers missing])])
+  if test "x$with_ldap" != xno; then
+    AC_CHECK_HEADERS([ldap.h sasl/sasl.h], [], [
+      if test "x$with_ldap" != xcheck ; then 
+        AC_MSG_ERROR ([LDAP or SASL headers missing])
+      else
+        with_ldap=no
+      fi])
+  fi
+  if test "x$with_ldap" != xno; then
+    LIB_LDAP=-lldap
+    AC_DEFINE([HAVE_LDAP], [1], [Define if you have LDAP libraries])
+  fi
+
+  AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
 fi
 
-AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
-fi
-
-AC_SUBST([ADMIN_METHOD])
+AM_CONDITIONAL([LDAP_GROUPS], [test "x$with_ldap" != xno])
 AC_SUBST([LIB_KADMS])
 AC_SUBST([LIB_SQLITE3])
-AC_SUBST([LIB_GROUPS])
+AC_SUBST([LIB_LDAP])
 
 save_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$KRB_INC_FLAGS $CPPFLAGS"

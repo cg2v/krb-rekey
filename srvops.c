@@ -88,6 +88,17 @@ static krb5_enctype std_enctypes[] = {
 };
 krb5_enctype *cfg_enctypes = std_enctypes;
 
+static int is_admin(struct rekey_session *sess)
+{
+  if (is_admin_from_file(sess)
+#ifdef HAVE_LDAP
+  ||  is_admin_from_ldap(sess)
+#endif
+  )
+    return 1;
+  return 0;
+}
+
 /* parse the client's name and determine what operations they can perform */
 static void check_authz(struct rekey_session *sess) 
 {

@@ -124,7 +124,7 @@ static int verify_op_success(LDAP *l, char *reason, LDAPMessage *messages)
   return 1;
 }
 
-int is_admin(struct rekey_session *sess)
+int is_admin_from_ldap(struct rekey_session *sess)
 {
   static int ldap_initialized=0;
   char *username=NULL;
