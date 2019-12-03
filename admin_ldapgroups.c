@@ -10,12 +10,6 @@
 #define REKEY_ADMIN_GROUP "cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu"
 
 static char *rekey_admin_group=REKEY_ADMIN_GROUP;
-char *admin_help_string = "admin LDAP group";
-
-void admin_arg(char *arg)
-{
-  rekey_admin_group = arg;
-}
 
 int is_admin(struct rekey_session *sess)
 {

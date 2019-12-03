@@ -25,13 +25,8 @@
 #define LDAP_BINDDN ""
 #define LDAP_PWFILE ""
 
-static char *rekey_admin_group=REKEY_ADMIN_GROUP;
-char *admin_help_string = "admin LDAP group";
+static char *rekey_admin_group;
 
-void admin_arg(char *arg)
-{
-  rekey_admin_group = arg;
-}
 #define LDAP_SET_OPTION(ld,option,invalue) \
   rc=ldap_set_option(ld,option,invalue); \
   if (rc!=LDAP_SUCCESS) \
@@ -172,6 +167,7 @@ int is_admin(struct rekey_session *sess)
 #endif
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_uri", LDAP_URI, &ldap_url);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_base", LDAP_BASEDN, &ldap_base);
+  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_group", REKEY_ADMIN_GROUP, &rekey_admin_group);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_filter", USER_INGROUP_FILTER, &ldap_filter);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_binddn", LDAP_BINDDN, &ldap_binddn);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_pwfile", LDAP_PWFILE, &ldap_pwfile);

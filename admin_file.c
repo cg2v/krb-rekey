@@ -49,14 +49,6 @@
 
 static char *admin_acl_file = SYSCONFDIR "/rekey.acl";
 
-char *admin_help_string = "admin ACL file";
-
-void admin_arg(char *arg)
-{
-  admin_acl_file = arg;
-}
-
-
 int is_admin(struct rekey_session *sess)
 {
   if (!sess->admin_data)

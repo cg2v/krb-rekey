@@ -88,33 +88,32 @@ the library.  Enctypes 2 (DES-CBC-MD4) and 3 (DES-CBC-MD5) should not
 normally be listed.  Instead, when a DES-CBC-CRC is generated, the same
 key will automatically be used for DES-CBC-MD4 and DES-CBC-MD5 as well.
 
-=item B<-a> I<admins>
+=back
+
+=head1 ADMINISTRATORS
 
 =for man .\"<<<===SECT-ADMIN-file===>>>
 
-Specifies the location of the ACL file controlling which clients are treated
-as administrators.  I<admins> is an ACL file in the format described under
-L</ACCESS CONTROL FILES> below.  A client is considered an administrator
-if it matches the ACL.  The default is F<@sysconfdir@/rekey.acl>.
+Administrators are enumerated in the file F<@sysconfdir@/rekey.acl>, which
+is an ACL file in the format described under L</ACCESS CONTROL FILES> below.
+A client is considered an administrator if it matches the ACL.
 
 =for man .\"<<<===SECT-ADMIN-ldapgroups===>>>
 
-Specifies the distinguished name of an LDAP group whose members are
-considered administrators.  The default is
+Members of an LDAP group are considered administrators. The group used is
 C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu>.
 
 =for man .\"<<<===SECT-ADMIN-ldapgroups-std===>>>
 
-Specifies the distinguished name of an LDAP group whose members are
-considered administrators.  The default is
-C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=groups,dc=cmu,dc=edu>.
+Members of a designated LDAP group are considered administrators.  The
+group name can be configured via a setting in the I<[appdefaults]> section
+of F</etc/krb5.conf>. The default is
+C<CN=Community:Department:ComputingServices:UnixCoverage:Comp,ou=Groups,dc=cmu,dc=edu>.
 
 =for man .\"<<<===SECT-ZZZ===>>>
 
 Administrators are able to start, finalize, and abort rekey operations
 and query their status.
-
-=back
 
 =head1 ACCESS CONTROL FILES
 
