@@ -106,9 +106,61 @@ C<cn=cmu:pgh:ComputingServices:ISAM:KerberosRekeyManagers,ou=group,dc=cmu,dc=edu
 =for man .\"<<<===SECT-ADMIN-ldapgroups-std===>>>
 
 Members of a designated LDAP group are considered administrators.  The
-group name can be configured via a setting in the I<[appdefaults]> section
-of F</etc/krb5.conf>. The default is
-C<CN=Community:Department:ComputingServices:UnixCoverage:Comp,ou=Groups,dc=cmu,dc=edu>.
+group name and parameters for contacting the LDAP server are configured
+by means of a group of settings in the C<[appdefaults]> section of
+F</etc/krb5.conf>, using the application name "rekey". See krb5.conf(5)
+for details on the format of this section.
+
+A client is considered an administrator if it is from the local (default)
+realm and is the /admin instance corresponding to an LDAP user who is a
+member of the designated group.
+
+The following settings are available:
+
+=over 4
+
+=item ldap_uri
+
+The LDAP server URI, typically of the form C<ldaps://server.example.org>.
+This option is required; there is no default.
+
+=item ldap_group
+
+The distinguished name (DN) of the LDAP group whose members are to be
+considered administrators. 
+This option is required; there is no default.
+
+=item ldap_base
+
+The base DN to be used when searching for the client user.
+This option is required; there is no default.
+
+=item ldap_filter
+
+The LDAP filter to be used when searching for the client user. This should
+take the form of a printf(3)-style format string, which will be evaluated
+with parameters consisting of the username and admin group DN.  The client
+is considered an admin if there is any matching object below the specified
+base DN. The default is C<(&(uid=%s)(isMemberOf=%s))>.
+
+=item ldap_binddn
+
+The distinguished name used to bind to the server. There is no default;
+if this option is not specified, an anonymous bind will be used.
+
+=item ldap_pwfile
+
+The path to a file containing the password to be used for authentication
+to the LDAP server. There is no default file; if this option is not
+specified, an empty password will be used.
+
+=item ldap_cacertdir
+
+The path to a directory containing CA certificates to be used when
+validating the LDAP server's certificate. The default is
+F</etc/andy/ldapcerts>.
+
+=back
 
 =for man .\"<<<===SECT-ZZZ===>>>
 

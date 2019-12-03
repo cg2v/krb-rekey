@@ -17,9 +17,6 @@
 #define SESS_PRIVATE
 #define NEED_KRB5
 #include "rekeysrv-locl.h"
-#define REKEY_ADMIN_GROUP "CN=Community:Department:ComputingServices:UnixCoverage:Comp,ou=Groups,dc=cmu,dc=edu"
-#define LDAP_URI "ldaps://ldap.cmu.edu"
-#define LDAP_BASEDN "dc=cmu,dc=edu"
 #define NO_FILTER "(objectClass=*)"
 #define USER_INGROUP_FILTER "(&(uid=%s)(isMemberOf=%s))"
 #define LDAP_BINDDN ""
@@ -165,14 +162,24 @@ int is_admin(struct rekey_session *sess)
   rdata.data=sess->realm;
   rdata.length=strlen(sess->realm);
 #endif
-  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_uri", LDAP_URI, &ldap_url);
-  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_base", LDAP_BASEDN, &ldap_base);
-  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_group", REKEY_ADMIN_GROUP, &rekey_admin_group);
+  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_uri", 0, &ldap_url);
+  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_base", 0, &ldap_base);
+  krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_group", 0, &rekey_admin_group);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_filter", USER_INGROUP_FILTER, &ldap_filter);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_binddn", LDAP_BINDDN, &ldap_binddn);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_pwfile", LDAP_PWFILE, &ldap_pwfile);
   krb5_appdefault_string(sess->kctx, "rekey", realm, "ldap_cacertdir", "/etc/andy/ldapcerts", &ldap_cacertdir);
 
+  /*
+   * These settings are now required.
+   * No message is printed because that would be annoyingly noisy.
+   */
+  if (!ldap_url || !ldap_base || !rekey_admin_group) {
+    prtmsg("Missing required ldap_uri, ldap_base, and/or ldap_group setting");
+    goto freeall;
+  }
+
+  ldap_pwbuf[0] = 0;
   if (strlen(ldap_pwfile) > 0) {
     int fd=open(ldap_pwfile, O_RDONLY);
     ssize_t rsize;
@@ -237,7 +244,7 @@ int is_admin(struct rekey_session *sess)
 #endif
   if (rc!=LDAP_SUCCESS)
   {
-    prtmsg("Failed to connect or authenticate to ldap for %s: %s%s%s", LDAP_URI,
+    prtmsg("Failed to connect or authenticate to ldap for %s: %s%s%s", ldap_url,
 	   ldap_err2string(rc),(errno==0)?"":": ",
 	   (errno==0)?"":strerror(errno));
     goto freeall;
