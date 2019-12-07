@@ -175,7 +175,6 @@ int is_admin_from_ldap(struct rekey_session *sess)
    * No message is printed because that would be annoyingly noisy.
    */
   if (!ldap_url || !ldap_base || !rekey_admin_group) {
-    prtmsg("Missing required ldap_uri, ldap_base, and/or ldap_group setting");
     goto freeall;
   }
 

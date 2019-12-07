@@ -43,6 +43,7 @@
 #include "config.h"
 #endif
 #include <stdarg.h>
+#include <unistd.h>
 
 #define SESS_PRIVATE
 #include "rekeysrv-locl.h"
@@ -51,8 +52,11 @@ static char *admin_acl_file = SYSCONFDIR "/rekey.acl";
 
 int is_admin_from_file(struct rekey_session *sess)
 {
-  if (!sess->admin_data)
+  if (!sess->admin_data) {
+    if (access(admin_acl_file, F_OK))
+      return 0;
     sess->admin_data = acl_load(sess, admin_acl_file);
+  }
 
   return acl_check(sess, sess->admin_data, sess->princ, 1);
 }
