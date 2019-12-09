@@ -1,0 +1,15 @@
+# systemd configuration for rekeysrv
+
+[Unit]
+Description=Kerberos rekey service
+Documentation=man:rekeysrv(8)
+Requires=rekey.socket
+
+[Service]
+EnvironmentFile=-/etc/sysconfig/heimdal-kdc
+ExecStart=@sbindir@/rekeysrv -i $REKEYSRV_ARGS
+StandardInput=socket
+
+[Install]
+Also=rekey.socket
+WantedBy=multi-user.target

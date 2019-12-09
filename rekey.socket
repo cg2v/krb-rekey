@@ -1,0 +1,12 @@
+# Socket configuration for rekeysrv
+
+[Unit]
+Description=rekeysrv listening socket
+Documentation=man:rekeysrv(8)
+
+[Socket]
+ListenStream=4446
+Accept=true
+
+[Install]
+WantedBy=sockets.target

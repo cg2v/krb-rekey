@@ -109,6 +109,7 @@ if test "$build_server" = "yes"; then
   AC_SUBST([SERVER_PROG], ['rekeysrv${EXEEXT}'])
 fi
 
+AM_CONDITIONAL([SERVER], [test "x$build_server" = xyes])
 AM_CONDITIONAL([LDAP_GROUPS], [test "x$with_ldap" != xno])
 AC_SUBST([LIB_KADMS])
 AC_SUBST([LIB_SQLITE3])
