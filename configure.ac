@@ -87,7 +87,7 @@ if test "$build_server" = "yes"; then
   if test "x$with_ldap" != xno; then
     AC_CHECK_LIB([ldap], [ldap_initialize], [], [
       if test "x$with_ldap" != xcheck ; then 
-        AC_MSG_ERROR ([No ldap library found])
+        AC_MSG_ERROR([No ldap library found])
       else
         with_ldap=no
       fi])
@@ -96,7 +96,7 @@ if test "$build_server" = "yes"; then
   if test "x$with_ldap" != xno; then
     AC_CHECK_HEADERS([ldap.h sasl/sasl.h], [], [
       if test "x$with_ldap" != xcheck ; then 
-        AC_MSG_ERROR ([LDAP or SASL headers missing])
+        AC_MSG_ERROR([LDAP or SASL headers missing])
       else
         with_ldap=no
       fi])
