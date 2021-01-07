@@ -389,7 +389,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
   krb5_keyblock keyblock;
   krb5_error_code kc;
   sqlite3_stmt *ins=NULL;
-  int rc;
+  int rc, nkeys=0;
 
   if (reqflags & REQFLAG_DESONLY)
     pEtype=std_enctypes;
@@ -417,6 +417,7 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
     if (reqflags & REQFLAG_COMPAT_ENCTYPE)
       continue;
 #endif
+    nkeys++;
     kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
     if (kc) {
       prtmsg("Cannot generate key for enctype %d (kerberos error %s)", 
@@ -438,6 +439,10 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
     rc = sqlite3_reset(ins);
     if (rc != SQLITE_OK)
       goto dberr;
+  }
+  if (nkeys == 0) {
+     send_error(sess, ERR_OTHER, "Server cannot generate any requested key types");
+     goto freeall;
   }
   rc = sqlite3_finalize(ins);
   ins=NULL;
