@@ -208,7 +208,9 @@
 #define REQFLAG_NODES 0x2
    /* do not create post-1510 enctypes for this principal */
 #define REQFLAG_COMPAT_ENCTYPE 0x4
-#define REQFLAG_MASK 0x7
+   /* do not create pre-rfc8429 enctypes for this principal */
+#define REQFLAG_COMPAT_ENCTYPE_RFC8429 0x8
+#define REQFLAG_MASK 0xf
 
   /* this host has commited the key */
 #define STATUSFLAG_COMPLETE 0x1

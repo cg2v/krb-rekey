@@ -417,6 +417,14 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
     if (reqflags & REQFLAG_COMPAT_ENCTYPE)
       continue;
 #endif
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES3_CBC_SHA1
+    if (reqflags & REQFLAG_COMPAT_ENCTYPE_RFC8429 && *pEtype == ENCTYPE_DES3_CBC_SHA1)
+      continue;
+#endif
+#if HAVE_DECL_ENCTYPE_ARCFOUR_HMAC
+    if (reqflags & REQFLAG_COMPAT_ENCTYPE_RFC8429 && *pEtype == ENCTYPE_ARCFOUR_HMAC)
+      continue;
+#endif
     nkeys++;
     kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
     if (kc) {
