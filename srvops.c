@@ -73,8 +73,12 @@
 #endif
 
 static krb5_enctype std_enctypes[] = {
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES_CBC_CRC
   ENCTYPE_DES_CBC_CRC,
+#endif
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES3_CBC_SHA1
   ENCTYPE_DES3_CBC_SHA1,
+#endif
 #if HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96
   ENCTYPE_AES128_CTS_HMAC_SHA1_96,
 #endif
@@ -397,12 +401,22 @@ static int generate_keys(struct rekey_session *sess, sqlite_int64 princid, int r
   if (rc != SQLITE_OK)
     goto dberr;
   for (;*pEtype != ENCTYPE_NULL; pEtype++) {
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES_CBC_CRC
     if (reqflags & REQFLAG_DESONLY && *pEtype > ENCTYPE_DES_CBC_CRC)
       continue;
     if (reqflags & REQFLAG_NODES && *pEtype == ENCTYPE_DES_CBC_CRC)
       continue;
+#else
+    if (reqflags & REQFLAG_DESONLY)
+      continue;
+#endif
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES3_CBC_SHA1
     if (reqflags & REQFLAG_COMPAT_ENCTYPE && *pEtype > ENCTYPE_DES3_CBC_SHA1)
       continue;
+#else
+    if (reqflags & REQFLAG_COMPAT_ENCTYPE)
+      continue;
+#endif
     kc = krb5_generate_random_keyblock(sess->kctx, *pEtype, &keyblock);
     if (kc) {
       prtmsg("Cannot generate key for enctype %d (kerberos error %s)", 
@@ -472,6 +486,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t
       if (buf_appendint(buf, enctype) || buf_appendint(buf, l) ||
 	  buf_appenddata(buf, key, l))
 	goto memerr;
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES_CBC_CRC
       if (enctype == ENCTYPE_DES_CBC_CRC) {
         if (buf_appendint(buf, ENCTYPE_DES_CBC_MD4) || buf_appendint(buf, l) ||
             buf_appenddata(buf, key, l))
@@ -481,6 +496,7 @@ static int add_keys_one(struct rekey_session *sess, sqlite_int64 principal, mb_t
           goto memerr;
 	n += 2;
       }
+#endif
       n++;
     }
     curlen = get_cursor(buf);
@@ -660,9 +676,11 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
       goto interr;
     if (enctype == 0)
       goto dberr;
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES_CBC_CRC
     if (enctype == ENCTYPE_DES_CBC_CRC)
       newk = realloc(k, ksz * (nk+3));
     else
+#endif
       newk = realloc(k, ksz * (nk+1));
     if (newk == NULL)
       goto memerr;
@@ -670,12 +688,14 @@ static int do_finalize_req(struct rekey_session *sess, int no_send,
 
     if (prepare_kadm_key(&k[nk++], kvno, enctype, keylen, keydata))
       goto memerr;
+#if !HAVE_DECL_ENCTYPE_AES128_CTS_HMAC_SHA1_96 || HAVE_DECL_ENCTYPE_DES_CBC_CRC
     if (enctype == ENCTYPE_DES_CBC_CRC) {
       if (prepare_kadm_key(&k[nk++], kvno, ENCTYPE_DES_CBC_MD4, keylen, keydata))
 	goto memerr;
       if (prepare_kadm_key(&k[nk++], kvno, ENCTYPE_DES_CBC_MD5, keylen, keydata))
 	goto memerr;
     }
+#endif
   }
   rc = sqlite3_finalize(selkey);
   selkey=NULL;
