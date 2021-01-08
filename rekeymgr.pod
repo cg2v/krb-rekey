@@ -49,14 +49,12 @@ The default is @def_rekey_service@
 =item B<-d>
 
 Instruct the server to generate only single-DES keys.  This option
-is used only with the B<start> and B<key> commands, and cannot be
-combined with B<-D>.
+is used only with the B<start> and B<key> commands.
 
 =item B<-D>
 
-Instruct the server to generate only non-DES keys.  This option
-is used only with the B<start> and B<key> commands, and cannot be
-combined with B<-d>.
+Instruct the server to generate DES keys.  This option is used only
+with the B<start> and B<key> commands, and is implied by B<-d>.
 
 =item B<-A>
 
