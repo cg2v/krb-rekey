@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
   int flag=REQFLAG_NODES;
   int optch;
   
-  while ((optch = getopt(argc, argv, "k:r:s:P:dDA")) != -1) {
+  while ((optch = getopt(argc, argv, "k:r:s:P:dDAN")) != -1) {
     switch (optch) {
     case 'k':
       keytab = optarg;
@@ -100,8 +100,11 @@ int main(int argc, char **argv) {
     case 'A':
       flag|=REQFLAG_COMPAT_ENCTYPE;
       break;
+    case 'N':
+      flag|=REQFLAG_COMPAT_ENCTYPE_RFC8429;
+      break;
     case '?':
-      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A] command [args]\n");
+      fprintf(stderr, "Usage: rekeymgr [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A|-N] command [args]\n");
       exit(1);
     }
   }
@@ -131,13 +134,17 @@ int main(int argc, char **argv) {
   if (argc - optind < 1) {
     
   usage:
-    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A] command [args]\n");
+    fprintf(stderr, "Usage: rekeyclt [-k keytab] [-r realm] [-s servername] [-P serverprinc]\n [-d|-D] [-A|-N] command [args]\n");
     fprintf(stderr, "       rekeyclt start principalname hostname [hostname]...\n");
     fprintf(stderr, "       rekeyclt status principalname\n");
     fprintf(stderr, "       rekeyclt abort principalname\n");
     fprintf(stderr, "       rekeyclt finalize principalname\n");
     fprintf(stderr, "       rekeyclt key principalname\n");
     exit(1);
+  }
+  if ((flag & (REQFLAG_COMPAT_ENCTYPE|REQFLAG_COMPAT_ENCTYPE_RFC8429|REQFLAG_NODES)) ==
+       (REQFLAG_COMPAT_ENCTYPE|REQFLAG_COMPAT_ENCTYPE_RFC8429|REQFLAG_NODES)) {
+    fprintf(stderr, "Warning: request flags or runtime exclude all enctypes.\nKeying operations are likely to fail\n");
   }
   targetname=argv[optind++];
   ssl_startup();

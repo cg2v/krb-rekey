@@ -6,7 +6,7 @@ rekeymgr - Manage Kerberos principal rekeying
 
 rekeymgr [B<-k> I<keytab>]
 [B<-r> I<realm>] [B<-s> I<server>] [B<-P> I<serverprinc>]
-[B<-d>|B<-D>] [B<-A>] I<command> I<args>...
+[B<-d>|B<-D>] [B<-A>|B<-N>] I<command> I<args>...
 
 =head1 DESCRIPTION
 
@@ -60,7 +60,13 @@ with the B<start> and B<key> commands, and is implied by B<-d>.
 
 Instruct the server to generate keys compatible with older Kerberos
 implementations.  Currently, this means using only enctypes not newer
-than DES3-CBC-SHA1.
+than DES3-CBC-SHA1. Not compatible with -N
+
+=item B<-N>
+
+Instruct the server to generate keys compatible with newer Kerberos
+implementations.  Currently, this means using only enctypes newer
+than DES3-CBC-SHA1. Not compatible with -A
 
 =back
 
