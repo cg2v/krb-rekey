@@ -9,6 +9,7 @@ Requires=rekey.socket
 EnvironmentFile=-/etc/sysconfig/heimdal-kdc
 ExecStart=@sbindir@/rekeysrv -i $REKEYSRV_ARGS
 StandardInput=socket
+SuccessExitStatus=1
 
 [Install]
 Also=rekey.socket
