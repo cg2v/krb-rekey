@@ -93,7 +93,6 @@ contains clients for managing the rekey process and downloading new keys.
 %install
 %{__rm} -rf %{buildroot}
 %{__make} install DESTDIR=%{buildroot}
-%{__rm} -f %{buildroot}%{_mandir}/man8/rekeysrv.*
 
 %clean
 %{__rm} -rf %{buildroot}

@@ -2,8 +2,9 @@ AUTOMAKE_OPTIONS=foreign 1.9
 bin_PROGRAMS=rekeymgr
 sbin_PROGRAMS=$(SERVER_PROG) getnewkeys age_keytab
 noinst_PROGRAMS=rekeytest
-man_MANS=rekeymgr.1 age_keytab.8 getnewkeys.8 rekeysrv.8
+man_MANS=rekeymgr.1 age_keytab.8 getnewkeys.8
 if SERVER
+  man_MANS += rekeysrv.8
   systemdsystemunitdir=/usr/lib/systemd/system
   systemdsystemunit_DATA = rekey@.service rekey.socket
 endif
