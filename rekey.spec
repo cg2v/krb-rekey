@@ -63,7 +63,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 
 License: CMU
 Vendor: Carnegie Mellon University
-Packager: Facilities Help <help+@cs.cmu.edu>
+Packager: Unix Services <unix-request@andrew.cmu.edu>
 %if 0%{?sles_version:1}
 Distribution: SUSE Linux Enterprise %{sles_version}
 %else
@@ -87,7 +87,7 @@ contains clients for managing the rekey process and downloading new keys.
 
 %build
 ./autogen %{vers}
-%configure --with-default-service-principal=rekey/daemon@CS.CMU.EDU
+%configure
 %{__make}
 
 %install
