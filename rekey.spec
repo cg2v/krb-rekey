@@ -37,7 +37,7 @@
 # AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
 # OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-%define vers 1.0
+%define vers 1.2
 
 %if 0%{?sles_version:1}
 %define relsuffix sles%{sles_version}
