@@ -1,0 +1,42 @@
+#!/bin/sh
+if [ ! -f /etc/krb5.keytab ] && [ ! -f /etc/krb5/krb5.keytab ]; then
+   exit
+fi
+
+if [ -f /etc/NoKerberosKeyUpdate ]; then
+  exit
+fi
+
+PATH=/usr/local/bin:/usr/local/sbin:/usr/kerberos/bin:$PATH:/usr/bin:/bin
+
+if [ "$1" != "test" ] && [ "$1" != "now" ]; then
+# Sleep for up to 3600 seconds
+# Taken from apticron's cron.daily
+    RANGE=3600
+    number=`od -vAn -N2 -tu4 < /dev/urandom`
+    number=`expr $number "%" $RANGE`
+    sleep $number
+fi
+
+KRB5CCFILE=`mktemp /tmp/krb5cc_rekey_XXXXX`
+if [ -z "$KRB5CCFILE" ]; then
+  exit
+fi
+if [ "$1" != "test" ]; then
+    exec 2> /dev/null
+fi
+KRB5CCNAME=FILE:${KRB5CCFILE}
+export KRB5CCNAME
+HOSTNAME=`hostname`
+
+kinit -k host/$HOSTNAME
+getnewkeys
+age_keytab
+
+if [ -f /etc/extra-rekey-keytabs ]; then
+  for keytab in `cat /etc/extra-rekey-keytabs`; do
+      getnewkeys -k $keytab
+      age_keytab $keytab
+  done
+fi
+kdestroy

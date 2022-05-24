@@ -99,6 +99,7 @@ contains clients for managing the rekey process and downloading new keys.
 
 %files
 %defattr(-, root, root)
+/etc/cron.daily/update-kerberos-keys
 %{_bindir}/rekeymgr
 %{_sbindir}/age_keytab
 %{_sbindir}/getnewkeys

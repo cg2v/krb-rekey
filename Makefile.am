@@ -8,6 +8,8 @@ if SERVER
   systemdsystemunitdir=/usr/lib/systemd/system
   systemdsystemunit_DATA = rekey@.service rekey.socket
 endif
+crondailydir=/etc/cron.daily
+dist_crondaily_SCRIPTS=update-kerberos-keys
 EXTRA_PROGRAMS=rekeysrv try_acl
 EXTRA_DIST=dhp1024.pem  dhp2048.pem  dhp3072.pem  dhp4096.pem  dhp512.pem \
    dhp7680.pem m4/gnulib-cache.m4 sqlembed.pl rekey.sql SMakefile
