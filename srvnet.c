@@ -72,6 +72,7 @@
 
 static SSL_CTX *sslctx;
 
+#if OPENSSL_VERSION_NUMBER < 0x3000000fL
 #include "dhp7680.h"
 
 static DH *get_dh(SSL *ssl, int is_export, int keysize) {
@@ -82,6 +83,7 @@ static DH *get_dh(SSL *ssl, int is_export, int keysize) {
     ret = get_dh7680();
   return ret;
 }
+#endif
 
 #ifndef OPENSSL_NO_EC
 #if OPENSSL_VERSION_NUMBER < 0x1000020fL
@@ -114,7 +116,11 @@ void ssl_startup(void) {
 #endif
   SSL_CTX_set_options(sslctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3|SSL_OP_NO_TICKET);
   SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_OFF);
+#if OPENSSL_VERSION_NUMBER >= 0x3000000fL
+  SSL_CTX_set_dh_auto(sslctx, 1);
+#else
   SSL_CTX_set_tmp_dh_callback(sslctx, get_dh);
+#endif
 #ifndef OPENSSL_NO_EC
 #if OPENSSL_VERSION_NUMBER < 0x1010000fL
 #if OPENSSL_VERSION_NUMBER > 0x1000020fL
